@@ -1,0 +1,89 @@
+project:
+  name: "TWSE Factor Research & Multi-Factor Backtest Lab"
+
+data:
+  primary_source: "twse_openapi"
+  fallback_source: "yfinance"
+  start_date: "2018-01-01"
+  end_date: "2025-12-31"
+  cache_format: "parquet"
+  ohlcv_ticker_limit: 100
+  ohlcv:
+    ticker_limit: 100
+    batch_size: 20
+    retry: 3
+    sleep_seconds: 1
+    fail_fast: false
+
+twse:
+  base_url: "https://openapi.twse.com.tw/v1"
+  timeout_seconds: 30
+
+reference:
+  repo: "ZJHuang915/PythonQuantTrading"
+  usage: "reference_only"
+
+paths:
+  universe: "data/processed/universe.parquet"
+  valuation: "data/processed/valuation.parquet"
+  ohlcv: "data/processed/ohlcv.parquet"
+  data_quality_report: "reports/data_quality_summary.md"
+  close_matrix: "data/processed/close_matrix.parquet"
+  high_matrix: "data/processed/high_matrix.parquet"
+  low_matrix: "data/processed/low_matrix.parquet"
+  volume_matrix: "data/processed/volume_matrix.parquet"
+  factors_price_volume: "data/processed/factors_price_volume.parquet"
+  factors_valuation_snapshot: "data/processed/factors_valuation_snapshot.parquet"
+  factors_composite: "data/processed/factors_composite.parquet"
+  factor_quality_report: "reports/factor_quality_summary.md"
+  factor_forward_returns: "data/processed/factor_forward_returns.parquet"
+  factor_ic_summary: "data/processed/factor_ic_summary.parquet"
+  factor_quantile_returns: "data/processed/factor_quantile_returns.parquet"
+  factor_turnover: "data/processed/factor_turnover.parquet"
+  factor_monotonicity: "data/processed/factor_monotonicity.parquet"
+  factor_analysis_report: "reports/factor_analysis_report.md"
+  factor_scoreboard: "data/processed/factor_scoreboard.parquet"
+  selected_factor_scores: "data/processed/selected_factor_scores.parquet"
+  topn_positions: "data/processed/topn_positions.parquet"
+  portfolio_weights: "data/processed/portfolio_weights.parquet"
+  backtest_results: "data/processed/backtest_results.parquet"
+  backtest_metrics: "data/processed/backtest_metrics.parquet"
+  composite_factor_report: "reports/composite_factor_report.md"
+  backtest_report: "reports/backtest_report.md"
+  manifest: "data/processed/_manifest.json"
+
+week2:
+  manifest_schema_version: "1.0.0"
+
+analysis:
+  horizons: [1, 5, 10, 20]
+  quantiles: 5
+  factors:
+    historical:
+      - momentum_60d
+      - low_volatility_20d
+      - volume_ratio_5d_60d
+    optional_composites:
+      - historical_price_volume
+    excluded_snapshot:
+      - pb_inverse
+      - pe_inverse
+      - dividend_yield
+      - latest_snapshot_mixed
+
+backtest:
+  enabled: true
+  min_ticker_count: 100
+  factor_name: historical_price_volume
+  top_n: 20
+  rebalance_frequency: daily
+  execution_lag_days: 1
+  initial_cash: 1000000
+  fees:
+    buy_fee_rate: 0.001425
+    sell_fee_rate: 0.001425
+    transaction_tax_rate: 0.003
+    slippage_rate: 0.001
+  vectorbt:
+    use_vectorbt: true
+    allow_fallback: true
