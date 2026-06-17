@@ -76,7 +76,9 @@ backtest:
   min_ticker_count: 100
   factor_name: historical_price_volume
   top_n: 20
+  top_n_grid: [10, 20, 30]
   rebalance_frequency: daily
+  rebalance_frequency_grid: ["daily", "weekly", "monthly"]
   execution_lag_days: 1
   initial_cash: 1000000
   fees:
@@ -84,6 +86,33 @@ backtest:
     sell_fee_rate: 0.001425
     transaction_tax_rate: 0.003
     slippage_rate: 0.001
+  rules:
+    hold_until_drop: true
+    drop_rank_buffer: 30
+    rebalance_only_on_schedule: true
+  cost_sensitivity:
+    enabled: true
+    scenarios:
+      - name: no_cost
+        buy_fee_rate: 0.0
+        sell_fee_rate: 0.0
+        transaction_tax_rate: 0.0
+        slippage_rate: 0.0
+      - name: half_cost
+        buy_fee_rate: 0.0007125
+        sell_fee_rate: 0.0007125
+        transaction_tax_rate: 0.0015
+        slippage_rate: 0.0005
+      - name: base_cost
+        buy_fee_rate: 0.001425
+        sell_fee_rate: 0.001425
+        transaction_tax_rate: 0.003
+        slippage_rate: 0.001
+      - name: high_cost
+        buy_fee_rate: 0.002
+        sell_fee_rate: 0.002
+        transaction_tax_rate: 0.003
+        slippage_rate: 0.002
   vectorbt:
     use_vectorbt: true
     allow_fallback: true

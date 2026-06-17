@@ -6,6 +6,9 @@ quality reporting. Week 2 extends those existing Parquet outputs into research-r
 matrices, factors, validation helpers, and Alphalens formatter readiness. Week 3
 adds config-driven OHLCV universe expansion readiness, a factor scoreboard, Top N
 selection, T+1 equal-weight portfolio construction, and a research-only backtest.
+Week 3.5 adds rebalance frequency controls, hold-until-drop buffer rule, cost
+sensitivity analysis, Top N sensitivity, turnover diagnostics, and backtest realism
+reporting.
 
 ## Week 1 Scope
 
@@ -128,6 +131,42 @@ Snapshot valuation factors remain excluded from historical backtests:
 Week 3 remains research-only. It is not live trading, broker integration, or
 investment advice.
 
+## Run Backtest Diagnostics Pipeline
+
+```bash
+.venv\Scripts\python run_backtest_diagnostics.py --config config/strategy.yaml
+```
+
+The Week 3.5 backtest diagnostics pipeline runs after `run_backtest.py` and produces:
+
+- `data/processed/rebalance_calendar.parquet` — signal and execution dates for
+  daily / weekly / monthly frequencies
+- `data/processed/backtest_scenarios.parquet` — no_cost / half_cost / base_cost /
+  high_cost sensitivity with cost_drag column
+- `data/processed/topn_sensitivity.parquet` — results for top_n = 10 / 20 / 30
+- `data/processed/rebalance_sensitivity.parquet` — results for daily / weekly /
+  monthly rebalance with rebalance_count
+- `data/processed/backtest_turnover_diagnostics.parquet` — avg / median / max /
+  annualized turnover, estimated cost drag
+- `data/processed/backtest_engine_comparison.parquet` — fallback engine vs vectorbt
+  (vectorbt reported as unavailable if not installed)
+- `reports/backtest_realism_report.md` — 15-section Markdown report answering
+  whether poor baseline is caused by factor weakness, cost drag, or high turnover
+
+Config knobs added to `config/strategy.yaml`:
+
+```yaml
+backtest:
+  top_n_grid: [10, 20, 30]
+  rebalance_frequency_grid: ["daily", "weekly", "monthly"]
+  rules:
+    hold_until_drop: true
+    drop_rank_buffer: 30
+  cost_sensitivity:
+    enabled: true
+    scenarios: [no_cost, half_cost, base_cost, high_cost]
+```
+
 ## Run Tests and Checks
 
 ```bash
@@ -142,6 +181,7 @@ investment advice.
 - Week 2: factor engineering and Alphalens formatter readiness
 - Week 2.5: historical factor analysis
 - Week 3: OHLCV expansion readiness, factor scoreboard, Top N portfolio, and `vectorbt` or fallback backtesting
+- Week 3.5: rebalance controls, buffer rule, cost sensitivity, Top N sensitivity, turnover diagnostics, backtest realism report
 - Week 4: robustness checks, charts, and Markdown reports
 
 `alphalens-reloaded` and `vectorbt` are roadmap dependencies. They are not required
