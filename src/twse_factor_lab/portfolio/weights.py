@@ -8,9 +8,33 @@ import pandas as pd
 def build_equal_weight_portfolio(
     topn_positions: pd.DataFrame,
     *,
-    execution_lag_days: int = 1,
+    rebalance_calendar: pd.DataFrame,
 ) -> pd.DataFrame:
+    """Build equal weights using the authoritative signal-to-execution map."""
     selected = topn_positions[topn_positions["selected"].astype(bool)].copy()
+    if selected.empty:
+        return pd.DataFrame(
+            columns=[
+                "date",
+                "ticker",
+                "target_weight",
+                "execution_date",
+                "execution_lag_days",
+            ]
+        )
+    calendar = rebalance_calendar[
+        ["signal_date", "execution_date", "execution_lag_days"]
+    ].copy()
+    calendar["signal_date"] = pd.to_datetime(calendar["signal_date"])
+    calendar["execution_date"] = pd.to_datetime(calendar["execution_date"])
+    selected["date"] = pd.to_datetime(selected["date"])
+    selected = selected.merge(
+        calendar,
+        left_on="date",
+        right_on="signal_date",
+        how="inner",
+        validate="many_to_one",
+    )
     if selected.empty:
         return pd.DataFrame(
             columns=[
@@ -23,11 +47,6 @@ def build_equal_weight_portfolio(
         )
     selected_count = selected.groupby("date")["ticker"].transform("count")
     selected["target_weight"] = 1.0 / selected_count
-    selected["execution_date"] = pd.to_datetime(selected["date"]) + pd.to_timedelta(
-        execution_lag_days,
-        unit="D",
-    )
-    selected["execution_lag_days"] = int(execution_lag_days)
     return (
         selected[
             [

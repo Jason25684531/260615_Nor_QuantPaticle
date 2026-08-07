@@ -13,6 +13,7 @@ from twse_factor_lab.backtest.costs import CostModel
 from twse_factor_lab.backtest.vectorbt_engine import run_weight_backtest
 from twse_factor_lab.data.manifest import append_manifest_entries, build_manifest_entry
 from twse_factor_lab.data.parquet_store import ParquetStore
+from twse_factor_lab.portfolio.rebalance import build_rebalance_calendar
 from twse_factor_lab.portfolio.selection import build_topn_positions
 from twse_factor_lab.portfolio.weights import build_equal_weight_portfolio
 from twse_factor_lab.selection.scoreboard import (
@@ -305,14 +306,27 @@ def run_backtest(config_path: str | Path) -> dict[str, Path]:
         (factors_composite["composite_type"] == selected_factor)
         & (~factors_composite["is_snapshot_component_used"].astype(bool))
     ].copy()
+    rebalance_frequency = str(backtest_config.get("rebalance_frequency", "daily"))
+    execution_lag_days = int(backtest_config.get("execution_lag_days", 1))
+    calendar = build_rebalance_calendar(
+        pd.DatetimeIndex(close_matrix.index),
+        frequency=rebalance_frequency,
+        execution_lag_days=execution_lag_days,
+    )
+    rebalance_dates = pd.DatetimeIndex(calendar["signal_date"])
+    rules = backtest_config.get("rules", {}) or {}
     topn_positions = build_topn_positions(
         factors_composite,
         top_n=int(backtest_config.get("top_n", 20)),
         factor_name=selected_factor,
+        rebalance_dates=rebalance_dates,
+        hold_until_drop=bool(rules.get("hold_until_drop", False)),
+        drop_rank_buffer=int(rules.get("drop_rank_buffer", 30)),
+        rebalance_frequency=rebalance_frequency,
     )
     portfolio_weights = build_equal_weight_portfolio(
         topn_positions,
-        execution_lag_days=int(backtest_config.get("execution_lag_days", 1)),
+        rebalance_calendar=calendar,
     )
     cost_model = _cost_model_from_config(backtest_config)
     vectorbt_config = backtest_config.get("vectorbt", {}) or {}

@@ -39,10 +39,10 @@ def _build_weights_for_topn(
     factor_name: str,
     top_n: int,
     rebalance_dates: pd.DatetimeIndex | None,
+    rebalance_calendar: pd.DataFrame,
     hold_until_drop: bool,
     drop_rank_buffer: int,
     rebalance_frequency: str,
-    execution_lag_days: int,
 ) -> pd.DataFrame:
     positions = build_topn_positions(
         factors_composite,
@@ -55,7 +55,7 @@ def _build_weights_for_topn(
     )
     return build_equal_weight_portfolio(
         positions,
-        execution_lag_days=execution_lag_days,
+        rebalance_calendar=rebalance_calendar,
     )
 
 
@@ -139,10 +139,10 @@ def run_cost_scenarios(
         factor_name=factor_name,
         top_n=top_n,
         rebalance_dates=rebalance_dates,
+        rebalance_calendar=calendar,
         hold_until_drop=hold_until_drop,
         drop_rank_buffer=drop_rank_buffer,
         rebalance_frequency=rebalance_frequency,
-        execution_lag_days=execution_lag_days,
     )
 
     results = []
@@ -249,10 +249,10 @@ def run_topn_sensitivity(
                 factor_name=factor_name,
                 top_n=top_n,
                 rebalance_dates=rebalance_dates,
+                rebalance_calendar=calendar,
                 hold_until_drop=hold_until_drop,
                 drop_rank_buffer=drop_rank_buffer,
                 rebalance_frequency=rebalance_frequency,
-                execution_lag_days=execution_lag_days,
             )
             metrics = _run_single_backtest(
                 close_matrix, weights, cost_model, top_n, initial_cash
@@ -353,10 +353,10 @@ def run_rebalance_sensitivity(
                 factor_name=factor_name,
                 top_n=top_n,
                 rebalance_dates=rebalance_dates,
+                rebalance_calendar=calendar,
                 hold_until_drop=hold_until_drop,
                 drop_rank_buffer=drop_rank_buffer,
                 rebalance_frequency=freq,
-                execution_lag_days=execution_lag_days,
             )
             metrics = _run_single_backtest(
                 close_matrix, weights, cost_model, top_n, initial_cash

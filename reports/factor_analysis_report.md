@@ -36,7 +36,7 @@
 - historical_price_volume | 1D | IC mean=0.0085, IC std=0.1645, IR=0.0516, valid dates=1921, avg assets=99.65
 - historical_price_volume | 5D | IC mean=0.0179, IC std=0.1751, IR=0.1021, valid dates=1917, avg assets=99.65
 - historical_price_volume | 10D | IC mean=0.0250, IC std=0.1705, IR=0.1469, valid dates=1912, avg assets=99.65
-- historical_price_volume | 20D | IC mean=0.0332, IC std=0.1727, IR=0.1921, valid dates=1902, avg assets=99.65
+- historical_price_volume | 20D | IC mean=0.0332, IC std=0.1727, IR=0.1921, valid dates=1902, avg assets=99.65 (可以看IR值 並且確認為中期信號)
 - low_volatility_20d | 1D | IC mean=-0.0421, IC std=0.2046, IR=-0.2055, valid dates=1921, avg assets=99.65
 - low_volatility_20d | 5D | IC mean=-0.0617, IC std=0.2029, IR=-0.3040, valid dates=1917, avg assets=99.65
 - low_volatility_20d | 10D | IC mean=-0.0695, IC std=0.1911, IR=-0.3638, valid dates=1912, avg assets=99.65

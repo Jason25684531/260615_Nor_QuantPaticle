@@ -17,14 +17,21 @@ def _weights_matrix(
 ) -> pd.DataFrame:
     weights = portfolio_weights.copy()
     weights["execution_date"] = pd.to_datetime(weights["execution_date"])
+    invalid_dates = weights.loc[
+        ~weights["execution_date"].isin(index), "execution_date"
+    ]
+    if not invalid_dates.empty:
+        raise ValueError(
+            "portfolio_weights contains execution dates outside close_matrix"
+        )
     matrix = weights.pivot_table(
         index="execution_date",
         columns="ticker",
         values="target_weight",
         aggfunc="last",
     )
-    matrix = matrix.reindex(index=index, columns=columns).fillna(0.0)
-    return matrix
+    matrix = matrix.reindex(columns=columns, fill_value=0.0).fillna(0.0)
+    return matrix.reindex(index=index).ffill().fillna(0.0)
 
 
 def _drawdown(equity: pd.Series) -> pd.Series:

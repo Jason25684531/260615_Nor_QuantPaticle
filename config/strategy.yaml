@@ -9,11 +9,31 @@ data:
   cache_format: "parquet"
   ohlcv_ticker_limit: 100
   ohlcv:
+    # Ingestion/runtime bound only; it never defines research-universe eligibility.
     ticker_limit: 100
     batch_size: 20
     retry: 3
     sleep_seconds: 1
     fail_fast: false
+
+universe:
+  membership: current_listed_only
+  liquidity:
+    enabled: true
+    window: 20
+    measure: median
+    minimum_traded_value: 50000000
+
+research_quality:
+  minimum_universe_coverage: 0.90
+
+research:
+  in_sample:
+    start: "2018-01-01"
+    end: "2022-12-31"
+  out_of_sample:
+    start: "2023-01-01"
+    end: "2025-12-31"
 
 twse:
   base_url: "https://openapi.twse.com.tw/v1"
@@ -27,6 +47,8 @@ paths:
   universe: "data/processed/universe.parquet"
   valuation: "data/processed/valuation.parquet"
   ohlcv: "data/processed/ohlcv.parquet"
+  research_universe: "data/processed/research_universe.parquet"
+  universe_coverage: "data/processed/universe_coverage.parquet"
   data_quality_report: "reports/data_quality_summary.md"
   close_matrix: "data/processed/close_matrix.parquet"
   high_matrix: "data/processed/high_matrix.parquet"

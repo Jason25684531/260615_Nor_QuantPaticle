@@ -19,9 +19,10 @@ def build_manifest_entry(
     schema_version: str,
     created_at: datetime | None = None,
     notes: str = "",
+    provenance: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     timestamp = created_at or datetime.now(UTC)
-    return {
+    entry = {
         "artifact_name": artifact_name,
         "path": path,
         "source_inputs": source_inputs,
@@ -31,6 +32,9 @@ def build_manifest_entry(
         "created_at": timestamp.isoformat(),
         "notes": notes,
     }
+    if provenance:
+        entry.update(provenance)
+    return entry
 
 
 def write_manifest(entries: list[dict[str, Any]], path: str | Path) -> Path:

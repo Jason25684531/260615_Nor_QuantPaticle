@@ -26,7 +26,6 @@ def build_rebalance_calendar(
     based on the actual trading_days index (no synthetic date_range).
     """
     trading_days = pd.DatetimeIndex(sorted(set(trading_days)))
-    trading_set = set(trading_days)
 
     if frequency == "daily":
         signal_dates = list(trading_days[:-execution_lag_days])
@@ -40,7 +39,7 @@ def build_rebalance_calendar(
     rows = []
     for sig in signal_dates:
         exec_date = _next_trading_day(sig, trading_days, execution_lag_days)
-        if exec_date is not None and exec_date in trading_set:
+        if exec_date is not None:
             rows.append(
                 {
                     "signal_date": sig,
@@ -92,9 +91,9 @@ def _next_trading_day(
     trading_days: pd.DatetimeIndex,
     lag: int,
 ) -> pd.Timestamp | None:
-    future = [d for d in trading_days if d > reference]
-    if len(future) >= lag:
-        return future[lag - 1]
+    position = trading_days.searchsorted(reference, side="right") + lag - 1
+    if position < len(trading_days):
+        return trading_days[position]
     return None
 
 

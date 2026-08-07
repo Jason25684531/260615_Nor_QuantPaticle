@@ -15,7 +15,14 @@ def test_equal_weights_sum_to_one_per_execution_date_and_apply_t_plus_one():
         }
     )
 
-    weights = build_equal_weight_portfolio(positions, execution_lag_days=1)
+    calendar = pd.DataFrame(
+        {
+            "signal_date": [pd.Timestamp("2024-01-02")],
+            "execution_date": [pd.Timestamp("2024-01-03")],
+            "execution_lag_days": [1],
+        }
+    )
+    weights = build_equal_weight_portfolio(positions, rebalance_calendar=calendar)
 
     assert weights["target_weight"].sum() == 1.0
     assert weights["execution_lag_days"].unique().tolist() == [1]

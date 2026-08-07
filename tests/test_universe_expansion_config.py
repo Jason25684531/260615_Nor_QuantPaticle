@@ -6,6 +6,7 @@ from run_data_pipeline import (
     download_ohlcv_with_retries,
     ohlcv_settings_from_config,
     select_ohlcv_tickers,
+    universe_settings_from_config,
 )
 from twse_factor_lab.data.yfinance_client import OhlcvDownloadResult
 
@@ -36,6 +37,19 @@ def test_select_ohlcv_tickers_uses_configurable_limit():
     assert len(tickers) == 100
     assert tickers[0] == "0001"
     assert tickers[-1] == "0100"
+
+
+def test_select_ohlcv_tickers_returns_full_universe_for_null_limit():
+    universe = pd.DataFrame({"ticker": ["0001", "0002"]})
+
+    assert select_ohlcv_tickers(universe, ticker_limit=None) == ["0001", "0002"]
+
+
+def test_universe_config_defaults_and_invalid_values_are_deterministic():
+    assert universe_settings_from_config({})["liquidity"]["window"] == 20
+
+    with pytest.raises(ValueError, match="median"):
+        universe_settings_from_config({"universe": {"liquidity": {"measure": "mean"}}})
 
 
 def test_failed_tickers_are_logged_and_pipeline_continues_when_not_fail_fast():

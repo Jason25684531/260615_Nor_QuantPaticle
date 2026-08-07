@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import time
+import warnings
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -10,6 +11,7 @@ from typing import Any
 import pandas as pd
 import yaml
 
+from twse_factor_lab.data.manifest import append_manifest_entries, build_manifest_entry
 from twse_factor_lab.data.normalizer import (
     normalize_ohlcv,
     normalize_universe,
@@ -17,7 +19,13 @@ from twse_factor_lab.data.normalizer import (
 )
 from twse_factor_lab.data.parquet_store import ParquetStore
 from twse_factor_lab.data.twse_client import TWSEClient
+from twse_factor_lab.data.universe import (
+    build_research_universe,
+    build_universe_coverage,
+)
 from twse_factor_lab.data.yfinance_client import OhlcvDownloadResult, YFinanceClient
+from twse_factor_lab.validation.ohlcv_integrity import sort_ohlcv, validate_ohlcv
+from twse_factor_lab.validation.research_period import validate_research_periods
 
 
 @dataclass(frozen=True)
@@ -69,6 +77,31 @@ def ohlcv_settings_from_config(data_config: dict[str, Any]) -> OhlcvSettings:
         sleep_seconds=float(ohlcv_config.get("sleep_seconds", 1)),
         fail_fast=bool(ohlcv_config.get("fail_fast", False)),
     )
+
+
+def universe_settings_from_config(config: dict[str, Any]) -> dict[str, Any]:
+    """Read deterministic universe defaults while rejecting unsupported measures."""
+
+    universe = config.get("universe", {}) or {}
+    liquidity = universe.get("liquidity", {}) or {}
+    settings = {
+        "membership": str(universe.get("membership", "current_listed_only")),
+        "liquidity": {
+            "enabled": bool(liquidity.get("enabled", True)),
+            "window": int(liquidity.get("window", 20)),
+            "measure": str(liquidity.get("measure", "median")),
+            "minimum_traded_value": float(
+                liquidity.get("minimum_traded_value", 50_000_000)
+            ),
+        },
+    }
+    if settings["membership"] != "current_listed_only":
+        raise ValueError("Only current_listed_only membership is currently supported")
+    if settings["liquidity"]["window"] < 1:
+        raise ValueError("universe.liquidity.window must be positive")
+    if settings["liquidity"]["measure"] != "median":
+        raise ValueError("universe.liquidity.measure must be median")
+    return settings
 
 
 def select_ohlcv_tickers(
@@ -142,6 +175,11 @@ def build_quality_report(
     valuation_source: str = "N/A",
     configured_ticker_limit: int | None = None,
     ohlcv_requested_tickers: int | None = None,
+    universe_coverage: pd.DataFrame | None = None,
+    membership: str = "current_listed_only",
+    minimum_universe_coverage: float | None = None,
+    universe_scope: str = "FULL",
+    research_config: dict[str, Any] | None = None,
 ) -> str:
     generated_at = datetime.now(UTC).isoformat()
     ticker_count = int(universe["ticker"].nunique()) if "ticker" in universe else 0
@@ -163,6 +201,20 @@ def build_quality_report(
     else:
         date_min = "N/A"
         date_max = "N/A"
+    coverage = universe_coverage if universe_coverage is not None else pd.DataFrame()
+    if coverage.empty:
+        coverage_lines = ["- No coverage rows"]
+    else:
+        latest = coverage.sort_values("date").iloc[-1]
+        coverage_lines = [
+            f"- coverage_date_rows: {len(coverage)}",
+            f"- latest_total_listing_eligible: {int(latest['listing_eligible_count'])}",
+            f"- latest_ohlcv_available: {int(latest['ohlcv_available_count'])}",
+            f"- latest_liquidity_pass: {int(latest['liquidity_pass_count'])}",
+            f"- latest_analysis_ready: {int(latest['analysis_ready_count'])}",
+            f"- latest_analysis_ready_ratio: {latest['coverage_ratio']:.4f}",
+            f"- mean_analysis_ready_ratio: {coverage['coverage_ratio'].mean():.4f}",
+        ]
 
     lines = [
         "# Data Quality Summary",
@@ -209,6 +261,24 @@ def build_quality_report(
             "- survivorship bias warning: the current universe is a present-day listed "
             "universe and can bias historical research if used without a "
             "dated membership source."
+        ),
+        "",
+        "## Research Universe Quality",
+        "",
+        f"- membership: {membership}",
+        "- survivorship_disclosure: current_listed_only is not point-in-time.",
+        f"- universe_scope: {universe_scope}",
+        f"- minimum_universe_coverage: {minimum_universe_coverage}",
+        *coverage_lines,
+        (
+            f"- in_sample: {research_config.get('in_sample')}"
+            if research_config
+            else "- in_sample: not configured"
+        ),
+        (
+            f"- out_of_sample: {research_config.get('out_of_sample')}"
+            if research_config
+            else "- out_of_sample: not configured"
         ),
         "",
         "## Missing Ratios",
@@ -271,17 +341,45 @@ def run_pipeline(config_path: str | Path) -> dict[str, Path]:
         fail_fast=ohlcv_settings.fail_fast,
     )
     ohlcv = normalize_ohlcv(download.data)
+    validate_ohlcv(ohlcv)
+    ohlcv = sort_ohlcv(ohlcv)
+    universe_settings = universe_settings_from_config(config)
+    research_config = config.get("research")
+    if research_config:
+        validate_research_periods(
+            research_config, data_config["start_date"], data_config["end_date"]
+        )
+    research_universe = build_research_universe(
+        universe, ohlcv, liquidity=universe_settings["liquidity"]
+    )
+    universe_coverage = build_universe_coverage(research_universe)
+    minimum_coverage = float(
+        (config.get("research_quality", {}) or {}).get("minimum_universe_coverage", 0.0)
+    )
+    universe_scope = "FULL"
+    if (universe_coverage["coverage_ratio"] < minimum_coverage).any():
+        universe_scope = "PARTIAL"
+        warnings.warn(
+            "Research-universe coverage is below minimum_universe_coverage; "
+            "continuing with PARTIAL scope.",
+            stacklevel=2,
+        )
 
     output_paths = {
         "universe": resolve_path(config_path, paths["universe"]),
         "valuation": resolve_path(config_path, paths["valuation"]),
         "ohlcv": resolve_path(config_path, paths["ohlcv"]),
+        "research_universe": resolve_path(config_path, paths["research_universe"]),
+        "universe_coverage": resolve_path(config_path, paths["universe_coverage"]),
         "data_quality_report": resolve_path(config_path, paths["data_quality_report"]),
+        "manifest": resolve_path(config_path, paths["manifest"]),
     }
 
     store.save(universe, output_paths["universe"])
     store.save(valuation, output_paths["valuation"])
     store.save(ohlcv, output_paths["ohlcv"])
+    store.save(research_universe, output_paths["research_universe"])
+    store.save(universe_coverage, output_paths["universe_coverage"])
 
     report = build_quality_report(
         universe=universe,
@@ -295,9 +393,51 @@ def run_pipeline(config_path: str | Path) -> dict[str, Path]:
         valuation_source="TWSE latest snapshot valuation endpoint",
         configured_ticker_limit=ohlcv_settings.ticker_limit,
         ohlcv_requested_tickers=len(tickers),
+        universe_coverage=universe_coverage,
+        membership=universe_settings["membership"],
+        minimum_universe_coverage=minimum_coverage,
+        universe_scope=universe_scope,
+        research_config=research_config,
     )
     output_paths["data_quality_report"].parent.mkdir(parents=True, exist_ok=True)
     output_paths["data_quality_report"].write_text(report, encoding="utf-8")
+
+    created_at = datetime.now(UTC)
+    append_manifest_entries(
+        [
+            build_manifest_entry(
+                artifact_name="ohlcv",
+                path=str(output_paths["ohlcv"]),
+                frame=ohlcv,
+                source_inputs=["yfinance"],
+                schema_version="ohlcv-v2",
+                created_at=created_at,
+                notes="canonical adjusted OHLCV",
+                provenance={
+                    "source": "yfinance",
+                    "price_adjustment": "auto_adjusted",
+                    "volume_basis": "reported_shares",
+                },
+            ),
+            build_manifest_entry(
+                artifact_name="research_universe",
+                path=str(output_paths["research_universe"]),
+                frame=research_universe,
+                source_inputs=[
+                    str(output_paths["universe"]),
+                    str(output_paths["ohlcv"]),
+                ],
+                schema_version="research-universe-v1",
+                created_at=created_at,
+                notes="date-aware research eligibility",
+                provenance={
+                    "membership": universe_settings["membership"],
+                    "liquidity_measure_source": "proxy_close_times_volume",
+                },
+            ),
+        ],
+        output_paths["manifest"],
+    )
 
     return output_paths
 

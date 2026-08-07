@@ -16,7 +16,7 @@ def test_yfinance_client_downloads_ohlcv_and_tracks_failed_tickers():
         assert start == "2024-01-01"
         assert end == "2024-01-03"
         assert progress is False
-        assert auto_adjust is False
+        assert auto_adjust is True
         if symbol == "9999.TW":
             return pd.DataFrame()
         return pd.DataFrame(
@@ -25,9 +25,10 @@ def test_yfinance_client_downloads_ohlcv_and_tracks_failed_tickers():
                 "High": [2.0],
                 "Low": [0.5],
                 "Close": [1.5],
+                "Adj Close": [1.5],
                 "Volume": [1000],
             },
-            index=pd.to_datetime(["2024-01-02"]),
+            index=pd.DatetimeIndex(["2024-01-02"], name="Date"),
         )
 
     client = YFinanceClient(download_func=fake_download)
@@ -37,3 +38,15 @@ def test_yfinance_client_downloads_ohlcv_and_tracks_failed_tickers():
     assert result.failed_tickers == ["9999"]
     assert result.data["ticker"].tolist() == ["2330"]
     assert result.data["close"].tolist() == [1.5]
+    assert "adj_close" not in result.data
+
+
+def test_yfinance_client_does_not_fabricate_incomplete_adjusted_ohlcv():
+    client = YFinanceClient(
+        download_func=lambda *_args, **_kwargs: pd.DataFrame({"Close": [1.5]})
+    )
+
+    result = client.download_ohlcv(["2330"], "2024-01-01", "2024-01-03")
+
+    assert result.data.empty
+    assert result.failed_tickers == ["2330"]

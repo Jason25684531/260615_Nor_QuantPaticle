@@ -50,7 +50,7 @@ class YFinanceClient:
                     start=start,
                     end=end,
                     progress=False,
-                    auto_adjust=False,
+                    auto_adjust=True,
                 )
             except Exception:
                 failed.append(raw_ticker)
@@ -60,7 +60,11 @@ class YFinanceClient:
                 failed.append(raw_ticker)
                 continue
 
-            frames.append(self._format_download(frame, raw_ticker))
+            formatted = self._format_download(frame, raw_ticker)
+            if formatted.empty:
+                failed.append(raw_ticker)
+                continue
+            frames.append(formatted)
 
         if not frames:
             return OhlcvDownloadResult(pd.DataFrame(), failed)
@@ -81,10 +85,11 @@ class YFinanceClient:
             "High": "high",
             "Low": "low",
             "Close": "close",
-            "Adj Close": "adj_close",
             "Volume": "volume",
         }
         frame = frame.rename(columns=rename_map)
         frame["ticker"] = ticker
         columns = ["date", "ticker", "open", "high", "low", "close", "volume"]
-        return frame[[column for column in columns if column in frame.columns]]
+        if not set(columns).issubset(frame.columns):
+            return pd.DataFrame(columns=columns)
+        return frame[columns]

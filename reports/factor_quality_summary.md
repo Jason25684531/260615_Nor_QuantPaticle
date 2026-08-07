@@ -1,6 +1,6 @@
 # Factor Quality Summary
 
-Generated at: 2026-06-16T12:45:02.667086+00:00
+Generated at: 2026-06-26T13:29:03.272855+00:00
 
 ## Input Parquet Paths
 
@@ -15,16 +15,16 @@ Generated at: 2026-06-16T12:45:02.667086+00:00
 - low_matrix: (1942, 100)
 - volume_matrix: (1942, 100)
 - factors_price_volume: (194200, 5)
-- factors_valuation_snapshot: (1078, 7)
+- factors_valuation_snapshot: (1077, 7)
 - factors_composite: (194300, 5)
 
 ## Factor Coverage
 
-- universe_ticker_count: 1090
+- universe_ticker_count: 1089
 - price_volume_date_range: 2018-01-02 to 2025-12-30
-- valuation_ticker_count: 1078
+- valuation_ticker_count: 1077
 - price_volume_missing_ratio: 0.0166
-- valuation_missing_ratio: 0.2042
+- valuation_missing_ratio: 0.2043
 - composite_missing_ratio: 0.0027
 
 ## Composite Row Breakdown
@@ -39,11 +39,11 @@ historical_price_volume_composite:
 rows: 194200
 date_range: 2018-01-02 to 2025-12-30
 is_snapshot_component_used: false
-historical_backtest_ready: true
+historical_backtest_ready: true 
 
 latest_snapshot_mixed_composite:
 rows: 100
-as_of_date: 2026-06-16 to 2026-06-16
+as_of_date: 2026-06-26 to 2026-06-26
 is_snapshot_component_used: true
 historical_backtest_ready: false
 
@@ -61,7 +61,7 @@ momentum_60d: ready
 low_volatility_20d: ready
 volume_ratio_5d_60d: ready
 historical_price_volume_composite: ready
-pb_inverse: snapshot_only_not_historical_ready
+pb_inverse: snapshot_only_not_historical_ready #估值因子可標記
 pe_inverse: snapshot_only_not_historical_ready
 dividend_yield: snapshot_only_not_historical_ready
 latest_snapshot_mixed_composite: not_historical_ready

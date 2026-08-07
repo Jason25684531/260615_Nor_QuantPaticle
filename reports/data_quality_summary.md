@@ -1,23 +1,23 @@
 # Data Quality Summary
 
-Generated at: 2026-06-16T12:44:49.571646+00:00
+Generated at: 2026-06-26T13:28:32.742741+00:00
 
 Configured date range: 2018-01-01 to 2025-12-31
 Actual OHLCV date range: 2018-01-02 to 2025-12-30
 OHLCV ticker subset size: 100
-universe_total_tickers: 1090
+universe_total_tickers: 1089
 ohlcv_requested_tickers: 100
 ohlcv_successful_tickers: 100
 ohlcv_failed_tickers: 0
-ohlcv_coverage_ratio: 0.0917
+ohlcv_coverage_ratio: 0.0918
 configured_ticker_limit: 100
 actual_ohlcv_ticker_count: 100
 failed_yfinance_tickers: None
-Universe rows: 1090
-Universe total count: 1090
-Valuation rows: 1078
+Universe rows: 1089
+Universe total count: 1089
+Valuation rows: 1077
 OHLCV rows: 193534
-Ticker count: 1090
+Ticker count: 1089
 OHLCV date range: 2018-01-02 to 2025-12-30
 
 ## Sources And Limitations
@@ -41,9 +41,9 @@ OHLCV date range: 2018-01-02 to 2025-12-30
 ### valuation
 - date: 1.0000
 - ticker: 0.0000
-- pe: 0.2291
+- pe: 0.2293
 - pb: 0.0000
-- dividend_yield: 0.2004
+- dividend_yield: 0.2006
 
 ### ohlcv
 - date: 0.0000
