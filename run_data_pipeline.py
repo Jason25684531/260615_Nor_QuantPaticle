@@ -180,6 +180,8 @@ def build_quality_report(
     minimum_universe_coverage: float | None = None,
     universe_scope: str = "FULL",
     research_config: dict[str, Any] | None = None,
+    liquidity_config: dict[str, Any] | None = None,
+    fundamental_coverage_report: str | Path | None = None,
 ) -> str:
     generated_at = datetime.now(UTC).isoformat()
     ticker_count = int(universe["ticker"].nunique()) if "ticker" in universe else 0
@@ -202,6 +204,24 @@ def build_quality_report(
         date_min = "N/A"
         date_max = "N/A"
     coverage = universe_coverage if universe_coverage is not None else pd.DataFrame()
+    listed_dates = universe.get("listed_date", pd.Series(dtype="datetime64[ns]"))
+    missing_listed_date_count = int(listed_dates.isna().sum())
+    liquidity = liquidity_config or {}
+    liquidity_rule = (
+        "disabled"
+        if not liquidity.get("enabled", True)
+        else (
+            f"trailing {liquidity.get('window', 20)}-observation median "
+            "adjusted close x reported volume > "
+            f"{liquidity.get('minimum_traded_value', 50_000_000):g}"
+        )
+    )
+    live_pipeline_status = (
+        "PARTIAL" if failed_tickers or universe_scope == "PARTIAL" else "SUCCESS"
+    )
+    fundamental_report_status = "not generated"
+    if fundamental_coverage_report and Path(fundamental_coverage_report).exists():
+        fundamental_report_status = str(fundamental_coverage_report)
     if coverage.empty:
         coverage_lines = ["- No coverage rows"]
     else:
@@ -242,7 +262,10 @@ def build_quality_report(
         "",
         "## Sources And Limitations",
         "",
+        f"- live_pipeline_status: {live_pipeline_status}",
         f"- OHLCV source: {ohlcv_source}",
+        "- price_adjustment: auto_adjusted",
+        "- volume_basis: reported_shares",
         f"- Valuation source: {valuation_source}",
         (
             "- market source: TWSE listed-company universe; if the source field is "
@@ -266,9 +289,13 @@ def build_quality_report(
         "## Research Universe Quality",
         "",
         f"- membership: {membership}",
+        f"- membership_missing_listed_date_count: {missing_listed_date_count}",
         "- survivorship_disclosure: current_listed_only is not point-in-time.",
         f"- universe_scope: {universe_scope}",
+        f"- liquidity_rule: {liquidity_rule}",
+        "- liquidity_measure_source: proxy_close_times_volume",
         f"- minimum_universe_coverage: {minimum_universe_coverage}",
+        f"- fundamental_coverage_report: {fundamental_report_status}",
         *coverage_lines,
         (
             f"- in_sample: {research_config.get('in_sample')}"
@@ -340,6 +367,11 @@ def run_pipeline(config_path: str | Path) -> dict[str, Path]:
         sleep_seconds=ohlcv_settings.sleep_seconds,
         fail_fast=ohlcv_settings.fail_fast,
     )
+    if download.data.empty:
+        raise RuntimeError(
+            "OHLCV download produced no usable rows; existing artifacts were not "
+            "overwritten"
+        )
     ohlcv = normalize_ohlcv(download.data)
     validate_ohlcv(ohlcv)
     ohlcv = sort_ohlcv(ohlcv)
@@ -347,7 +379,7 @@ def run_pipeline(config_path: str | Path) -> dict[str, Path]:
     research_config = config.get("research")
     if research_config:
         validate_research_periods(
-            research_config, data_config["start_date"], data_config["end_date"]
+            research_config, ohlcv["date"].min(), ohlcv["date"].max()
         )
     research_universe = build_research_universe(
         universe, ohlcv, liquidity=universe_settings["liquidity"]
@@ -398,6 +430,12 @@ def run_pipeline(config_path: str | Path) -> dict[str, Path]:
         minimum_universe_coverage=minimum_coverage,
         universe_scope=universe_scope,
         research_config=research_config,
+        liquidity_config=universe_settings["liquidity"],
+        fundamental_coverage_report=resolve_path(
+            config_path, paths.get("fundamental_coverage_report", "")
+        )
+        if paths.get("fundamental_coverage_report")
+        else None,
     )
     output_paths["data_quality_report"].parent.mkdir(parents=True, exist_ok=True)
     output_paths["data_quality_report"].write_text(report, encoding="utf-8")
@@ -434,6 +472,15 @@ def run_pipeline(config_path: str | Path) -> dict[str, Path]:
                     "membership": universe_settings["membership"],
                     "liquidity_measure_source": "proxy_close_times_volume",
                 },
+            ),
+            build_manifest_entry(
+                artifact_name="universe_coverage",
+                path=str(output_paths["universe_coverage"]),
+                frame=universe_coverage,
+                source_inputs=[str(output_paths["research_universe"])],
+                schema_version="research-universe-coverage-v1",
+                created_at=created_at,
+                notes="date-level research-universe coverage",
             ),
         ],
         output_paths["manifest"],

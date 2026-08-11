@@ -14,7 +14,7 @@ def test_yfinance_client_preserves_existing_suffix():
 def test_yfinance_client_downloads_ohlcv_and_tracks_failed_tickers():
     def fake_download(symbol, start, end, progress, auto_adjust):
         assert start == "2024-01-01"
-        assert end == "2024-01-03"
+        assert end == "2024-01-04"
         assert progress is False
         assert auto_adjust is True
         if symbol == "9999.TW":

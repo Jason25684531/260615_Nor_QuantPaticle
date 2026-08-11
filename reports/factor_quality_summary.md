@@ -1,6 +1,6 @@
 # Factor Quality Summary
 
-Generated at: 2026-06-26T13:29:03.272855+00:00
+Generated at: 2026-08-11T03:40:52.040731+00:00
 
 ## Input Parquet Paths
 
@@ -10,40 +10,40 @@ Generated at: 2026-06-26T13:29:03.272855+00:00
 
 ## Artifact Shapes
 
-- close_matrix: (1942, 100)
-- high_matrix: (1942, 100)
-- low_matrix: (1942, 100)
-- volume_matrix: (1942, 100)
-- factors_price_volume: (194200, 5)
-- factors_valuation_snapshot: (1077, 7)
-- factors_composite: (194300, 5)
+- close_matrix: (1943, 100)
+- high_matrix: (1943, 100)
+- low_matrix: (1943, 100)
+- volume_matrix: (1943, 100)
+- factors_price_volume: (194300, 5)
+- factors_valuation_snapshot: (1083, 7)
+- factors_composite: (194400, 5)
 
 ## Factor Coverage
 
-- universe_ticker_count: 1089
-- price_volume_date_range: 2018-01-02 to 2025-12-30
-- valuation_ticker_count: 1077
+- universe_ticker_count: 1094
+- price_volume_date_range: 2018-01-02 to 2025-12-31
+- valuation_ticker_count: 1083
 - price_volume_missing_ratio: 0.0166
-- valuation_missing_ratio: 0.2043
+- valuation_missing_ratio: 0.2049
 - composite_missing_ratio: 0.0027
 
 ## Composite Row Breakdown
 
-- factors_composite_total_rows: 194300
-- historical_price_volume_rows: 194200
+- factors_composite_total_rows: 194400
+- historical_price_volume_rows: 194300
 - latest_snapshot_mixed_rows: 100
 
 ## Composite Semantics
 
 historical_price_volume_composite:
-rows: 194200
-date_range: 2018-01-02 to 2025-12-30
+rows: 194300
+date_range: 2018-01-02 to 2025-12-31
 is_snapshot_component_used: false
-historical_backtest_ready: true 
+historical_backtest_ready: true
 
 latest_snapshot_mixed_composite:
 rows: 100
-as_of_date: 2026-06-26 to 2026-06-26
+as_of_date: 2026-08-11 to 2026-08-11
 is_snapshot_component_used: true
 historical_backtest_ready: false
 
@@ -61,7 +61,7 @@ momentum_60d: ready
 low_volatility_20d: ready
 volume_ratio_5d_60d: ready
 historical_price_volume_composite: ready
-pb_inverse: snapshot_only_not_historical_ready #估值因子可標記
+pb_inverse: snapshot_only_not_historical_ready
 pe_inverse: snapshot_only_not_historical_ready
 dividend_yield: snapshot_only_not_historical_ready
 latest_snapshot_mixed_composite: not_historical_ready

@@ -3,6 +3,7 @@ from pathlib import Path
 import pandas as pd
 
 from run_factor_pipeline import load_config, run_factor_pipeline
+from twse_factor_lab.data.manifest import write_manifest
 from twse_factor_lab.data.parquet_store import ParquetStore
 
 
@@ -67,6 +68,16 @@ week2:
         ),
         root / "data/processed/ohlcv.parquet",
     )
+    write_manifest(
+        [
+            {
+                "artifact_name": "ohlcv",
+                "path": "data/processed/ohlcv.parquet",
+                "price_adjustment": "auto_adjusted",
+            }
+        ],
+        root / "data/processed/_manifest.json",
+    )
 
     outputs = run_factor_pipeline(config_path)
     report_path = Path(outputs["factor_quality_report"])
@@ -77,6 +88,7 @@ week2:
     assert "valuation inputs are latest snapshot data" in report_path.read_text(
         encoding="utf-8"
     )
+    assert '"artifact_name": "ohlcv"' in manifest_path.read_text(encoding="utf-8")
 
 
 def test_load_config_keeps_week2_paths_available(tmp_path):

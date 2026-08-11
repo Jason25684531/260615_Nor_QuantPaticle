@@ -10,7 +10,7 @@ import yaml
 
 from run_data_pipeline import resolve_path
 from twse_factor_lab.alphalens.formatter import validate_alphalens_inputs
-from twse_factor_lab.data.manifest import build_manifest_entry, write_manifest
+from twse_factor_lab.data.manifest import append_manifest_entries, build_manifest_entry
 from twse_factor_lab.data.matrix_builder import build_ohlcv_matrices
 from twse_factor_lab.data.parquet_store import ParquetStore
 from twse_factor_lab.factors.composer import build_composite_factor_frame
@@ -319,7 +319,7 @@ def run_factor_pipeline(config_path: str | Path) -> dict[str, Path]:
             notes="historical and latest snapshot composite scores",
         ),
     ]
-    write_manifest(manifest_entries, output_paths["manifest"])
+    append_manifest_entries(manifest_entries, output_paths["manifest"])
 
     return output_paths
 

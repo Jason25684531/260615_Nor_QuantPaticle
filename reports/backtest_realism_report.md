@@ -4,14 +4,14 @@
 
 > **研究聲明 Research Disclaimer**
 > - research backtest only · not investment advice · not production-ready
-> - OHLCV coverage: 100 / 1090 tickers (yfinance fallback)
+> - OHLCV coverage: 100 tickers (bounded yfinance fallback)
 > - valuation snapshot factors excluded (pb_inverse / pe_inverse / dividend_yield / latest_snapshot_mixed)
 
 ---
 
 ## 1. Run Metadata
 
-- generated_at: 2026-06-17T07:51:02.660093+00:00
+- generated_at: 2026-08-11T03:41:50.065594+00:00
 - config_path: config/strategy.yaml
 - pipeline: run_backtest_diagnostics.py
 - factor_name: historical_price_volume
@@ -20,8 +20,8 @@
 
 ## 2. Purpose
 
-Week 3 baseline backtest produced total_return = -0.979297, Sharpe = -3.065453.
-This report diagnoses whether the poor result is caused by:
+Current baseline: total_return=-0.2432, sharpe=-0.2502.
+This report diagnoses performance through:
 1. Factor alpha weakness (signal itself has no predictive power)
 2. Transaction cost drag (daily rebalance × high costs)
 3. Excessive turnover overwhelming any gross return
@@ -29,15 +29,15 @@ This report diagnoses whether the poor result is caused by:
 
 ## 3. Baseline Strategy Recap
 
-- factor: historical_price_volume (equal-weight composite of momentum_60d, low_volatility_20d, volume_ratio_5d_60d)
+- factor: historical_price_volume
 - selection: Top 20 by composite score
 - weighting: equal weight
 - execution: T+1 (signal at date T, trade at T+1)
-- baseline result: total_return=-0.979297, annualized_return=-0.395379, sharpe=-3.065453, max_drawdown=-0.979297, turnover=0.596807
+- baseline result: total_return=-0.2432, annualized_return=-0.0355, sharpe=-0.2502, max_drawdown=-0.3977, turnover=0.1406
 
 ## 4. Universe Coverage
 
-- actual OHLCV tickers: 100 / 1090 TWSE listed
+- actual OHLCV tickers: 100
 - data source: yfinance fallback (TWSE OpenAPI OHLCV not fully available)
 - survivorship bias caveat: delisted tickers may be underrepresented
 
@@ -51,44 +51,44 @@ This report diagnoses whether the poor result is caused by:
 
 | frequency | rebalance_count | total_return | annualized_return | sharpe | max_drawdown | turnover |
 |---|---|---|---|---|---|---|
-| daily | 1941 | -0.9623 | -0.3464 | -2.6439 | -0.9623 | 0.5059 |
-| weekly | 413 | -0.9394 | -0.3050 | -4.3673 | -0.9394 | 0.4145 |
-| monthly | 96 | -0.5296 | -0.0932 | -1.8877 | -0.5296 | 0.0844 |
+| daily | 1942 | -0.2432 | -0.0355 | -0.2502 | -0.3977 | 0.1406 |
+| weekly | 413 | 0.2820 | 0.0327 | 0.2316 | -0.2808 | 0.0970 |
+| monthly | 96 | 0.5948 | 0.0624 | 0.4507 | -0.2246 | 0.0422 |
 
 **Turnover by frequency:**
-  - daily: turnover=0.5059
-  - weekly: turnover=0.4145
-  - monthly: turnover=0.0844
+  - daily: turnover=0.1406
+  - weekly: turnover=0.0970
+  - monthly: turnover=0.0422
 
 ## 7. Cost Sensitivity Results
 
 | scenario | total_return | annualized_return | sharpe | max_drawdown | turnover | cost_drag |
 |---|---|---|---|---|---|---|
-| no_cost | 0.7923 | 0.0787 | 0.6142 | -0.2647 | 0.5059 | 0.0000 |
-| half_cost | -0.7394 | -0.1601 | -1.2452 | -0.7425 | 0.5059 | 1.5317 |
-| base_cost | -0.9623 | -0.3464 | -2.6439 | -0.9623 | 0.5059 | 1.7546 |
-| high_cost | -0.9920 | -0.4657 | -3.4863 | -0.9920 | 0.5059 | 1.7843 |
+| no_cost | 1.2081 | 0.1082 | 0.7630 | -0.2671 | 0.1406 | 0.0000 |
+| half_cost | 0.2928 | 0.0339 | 0.2389 | -0.2858 | 0.1406 | 0.9153 |
+| base_cost | -0.2432 | -0.0355 | -0.2502 | -0.3977 | 0.1406 | 1.4513 |
+| high_cost | -0.5080 | -0.0879 | -0.6187 | -0.5316 | 0.1406 | 1.7161 |
 
-**Analysis**: no_cost=0.7923, base_cost=-0.9623 → yes, cost removal materially improved return
+**Analysis**: no_cost=1.2081, base_cost=-0.2432 → yes, cost removal materially improved return
 
 ## 8. Top N Sensitivity Results
 
 | top_n | total_return | annualized_return | sharpe | max_drawdown | turnover | notes |
 |---|---|---|---|---|---|---|
-| 10 | -0.9582 | -0.3377 | -2.4850 | -0.9582 | 0.4858 |  |
-| 20 | -0.9623 | -0.3464 | -2.6439 | -0.9623 | 0.5059 |  |
-| 30 | -0.9739 | -0.3769 | -3.0449 | -0.9739 | 0.5603 |  |
+| 10 | -0.0915 | -0.0124 | -0.0841 | -0.3244 | 0.1071 |  |
+| 20 | -0.2432 | -0.0355 | -0.2502 | -0.3977 | 0.1406 |  |
+| 30 | -0.6500 | -0.1273 | -0.9524 | -0.6505 | 0.2388 |  |
 
 ## 9. Turnover Diagnostics
 
-- average_daily_turnover: 0.3099
-- median_daily_turnover: 0.3000
+- average_daily_turnover: 0.1421
+- median_daily_turnover: 0.1000
 - max_daily_turnover: 1.0000
-- annualized_turnover_estimate: 78.0912
+- annualized_turnover_estimate: 35.8202
 - avg_holdings: 20.0000
-- avg_buys_per_rebalance: 0.1568
-- avg_sells_per_rebalance: 0.1563
-- estimated_cost_drag: 0.3065
+- avg_buys_per_rebalance: 0.0918
+- avg_sells_per_rebalance: 0.0911
+- estimated_cost_drag: 0.1406
 
 ## 10. Buffer Rule Impact
 
@@ -102,20 +102,20 @@ This report diagnoses whether the poor result is caused by:
 
 | engine | total_return | sharpe | max_drawdown | turnover | notes |
 |---|---|---|---|---|---|
-| fallback_weight_engine | -0.9793 | -3.0655 | -0.9793 | 0.5968 | deterministic fallback engine |
+| fallback_weight_engine | -0.2432 | -0.2502 | -0.3977 | 0.1406 | deterministic fallback engine |
 | vectorbt | NaN | NaN | NaN | NaN | vectorbt unavailable |
 
 ## 12. Interpretation
 
 ### Q1: Did no-cost performance improve materially?
-- no_cost=0.7923, base_cost=-0.9623 → yes, cost removal materially improved return
+- no_cost=1.2081, base_cost=-0.2432 → yes, cost removal materially improved return
 
 ### Q2: Did weekly/monthly rebalance reduce turnover?
-- daily=0.5059, weekly=0.4145, monthly=0.0844
+- daily=0.1406, weekly=0.0970, monthly=0.0422
 - Turnover reduction is present but modest, or data insufficient.
 
 ### Q3: Did lower turnover improve Sharpe or drawdown?
-- Sharpe by frequency: daily=-2.6439, weekly=-4.3673, monthly=-1.8877
+- Sharpe by frequency: daily=-0.2502, weekly=0.2316, monthly=0.4507
 
 ### Q4: Is the strategy failing due to factor weakness or cost/turnover?
 - Cost and turnover are the dominant contributors to the negative result. The gross alpha signal may exist but is overwhelmed by transaction costs at daily rebalance frequency.
@@ -125,7 +125,7 @@ This report diagnoses whether the poor result is caused by:
 
 ## 13. Limitations
 
-- OHLCV coverage is 100 / 1090 (9.2%) — small universe introduces concentration risk
+- OHLCV input is limited to 100 tickers; see data quality report.
 - yfinance fallback data may differ from official TWSE closing prices
 - Valuation snapshot factors (pb_inverse, pe_inverse, dividend_yield) excluded — composite is price-volume only
 - Backtest period and survivorship bias not fully controlled

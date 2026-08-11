@@ -183,6 +183,12 @@ class TestDiagnosticsPipeline:
         ]:
             assert section in report, f"Missing section: {section}"
 
+        scenarios = pd.read_parquet(
+            tmp_project / "data" / "processed" / "backtest_scenarios.parquet"
+        )
+        baseline = scenarios.loc[scenarios["scenario"] == "base_cost"].iloc[0]
+        assert f"total_return={baseline['total_return']:.4f}" in report
+
     def test_report_contains_disclaimer(self, tmp_project: Path) -> None:
         from run_backtest_diagnostics import run_diagnostics
 

@@ -2,7 +2,7 @@
 
 ## Run Metadata
 
-- generated_at: 2026-06-16T12:46:03.074748+00:00
+- generated_at: 2026-08-11T03:41:31.042219+00:00
 - config_path: config\strategy.yaml
 - pipeline_name: run_factor_analysis.py
 
@@ -21,8 +21,8 @@
 - close_matrix: D:\01_Project\260615_Nor_QuantPaticle\data\processed\close_matrix.parquet
 - factors_price_volume: D:\01_Project\260615_Nor_QuantPaticle\data\processed\factors_price_volume.parquet
 - factors_composite: D:\01_Project\260615_Nor_QuantPaticle\data\processed\factors_composite.parquet
-- close_matrix_shape: (1942, 100)
-- close_matrix_date_range: 2018-01-02 to 2025-12-30
+- close_matrix_shape: (1943, 100)
+- close_matrix_date_range: 2018-01-02 to 2025-12-31
 - ohlcv_subset_ticker_count: 100
 
 ## Forward Return Setup
@@ -33,65 +33,65 @@
 
 ## IC / IR Summary
 
-- historical_price_volume | 1D | IC mean=0.0085, IC std=0.1645, IR=0.0516, valid dates=1921, avg assets=99.65
-- historical_price_volume | 5D | IC mean=0.0179, IC std=0.1751, IR=0.1021, valid dates=1917, avg assets=99.65
-- historical_price_volume | 10D | IC mean=0.0250, IC std=0.1705, IR=0.1469, valid dates=1912, avg assets=99.65
-- historical_price_volume | 20D | IC mean=0.0332, IC std=0.1727, IR=0.1921, valid dates=1902, avg assets=99.65 (可以看IR值 並且確認為中期信號)
-- low_volatility_20d | 1D | IC mean=-0.0421, IC std=0.2046, IR=-0.2055, valid dates=1921, avg assets=99.65
-- low_volatility_20d | 5D | IC mean=-0.0617, IC std=0.2029, IR=-0.3040, valid dates=1917, avg assets=99.65
-- low_volatility_20d | 10D | IC mean=-0.0695, IC std=0.1911, IR=-0.3638, valid dates=1912, avg assets=99.65
-- low_volatility_20d | 20D | IC mean=-0.0788, IC std=0.1810, IR=-0.4353, valid dates=1902, avg assets=99.65
-- momentum_60d | 1D | IC mean=-0.0103, IC std=0.1606, IR=-0.0638, valid dates=1881, avg assets=99.65
-- momentum_60d | 5D | IC mean=-0.0063, IC std=0.1710, IR=-0.0370, valid dates=1877, avg assets=99.65
-- momentum_60d | 10D | IC mean=0.0002, IC std=0.1722, IR=0.0010, valid dates=1872, avg assets=99.64
-- momentum_60d | 20D | IC mean=0.0095, IC std=0.1658, IR=0.0571, valid dates=1862, avg assets=99.64
-- volume_ratio_5d_60d | 1D | IC mean=-0.0120, IC std=0.1321, IR=-0.0912, valid dates=1882, avg assets=99.54
-- volume_ratio_5d_60d | 5D | IC mean=-0.0177, IC std=0.1335, IR=-0.1323, valid dates=1878, avg assets=99.54
-- volume_ratio_5d_60d | 10D | IC mean=-0.0179, IC std=0.1299, IR=-0.1374, valid dates=1873, avg assets=99.54
-- volume_ratio_5d_60d | 20D | IC mean=-0.0231, IC std=0.1289, IR=-0.1796, valid dates=1863, avg assets=99.54
+- historical_price_volume | 1D | IC mean=0.0104, IC std=0.1662, IR=0.0627, valid dates=1922, avg assets=99.65
+- historical_price_volume | 5D | IC mean=0.0256, IC std=0.1769, IR=0.1449, valid dates=1918, avg assets=99.65
+- historical_price_volume | 10D | IC mean=0.0364, IC std=0.1722, IR=0.2115, valid dates=1913, avg assets=99.65
+- historical_price_volume | 20D | IC mean=0.0467, IC std=0.1737, IR=0.2689, valid dates=1903, avg assets=99.65
+- low_volatility_20d | 1D | IC mean=-0.0429, IC std=0.2051, IR=-0.2094, valid dates=1922, avg assets=99.65
+- low_volatility_20d | 5D | IC mean=-0.0667, IC std=0.2040, IR=-0.3269, valid dates=1918, avg assets=99.65
+- low_volatility_20d | 10D | IC mean=-0.0783, IC std=0.1930, IR=-0.4055, valid dates=1913, avg assets=99.65
+- low_volatility_20d | 20D | IC mean=-0.0928, IC std=0.1826, IR=-0.5080, valid dates=1903, avg assets=99.65
+- momentum_60d | 1D | IC mean=-0.0104, IC std=0.1616, IR=-0.0644, valid dates=1882, avg assets=99.65
+- momentum_60d | 5D | IC mean=-0.0043, IC std=0.1731, IR=-0.0248, valid dates=1878, avg assets=99.65
+- momentum_60d | 10D | IC mean=0.0035, IC std=0.1747, IR=0.0198, valid dates=1873, avg assets=99.64
+- momentum_60d | 20D | IC mean=0.0148, IC std=0.1704, IR=0.0867, valid dates=1863, avg assets=99.64
+- volume_ratio_5d_60d | 1D | IC mean=-0.0089, IC std=0.1324, IR=-0.0674, valid dates=1883, avg assets=99.54
+- volume_ratio_5d_60d | 5D | IC mean=-0.0107, IC std=0.1339, IR=-0.0800, valid dates=1879, avg assets=99.54
+- volume_ratio_5d_60d | 10D | IC mean=-0.0087, IC std=0.1310, IR=-0.0666, valid dates=1874, avg assets=99.54
+- volume_ratio_5d_60d | 20D | IC mean=-0.0168, IC std=0.1304, IR=-0.1291, valid dates=1864, avg assets=99.54
 
 ## Quantile Returns
 
-- historical_price_volume | 1D | Q1=0.0002, Q2=-0.0000, Q3=0.0003, Q4=0.0002, Q5=0.0004 | top-bottom=0.0002
-- historical_price_volume | 5D | Q1=0.0007, Q2=0.0005, Q3=0.0016, Q4=0.0011, Q5=0.0016 | top-bottom=0.0009
-- historical_price_volume | 10D | Q1=0.0014, Q2=0.0013, Q3=0.0033, Q4=0.0019, Q5=0.0035 | top-bottom=0.0021
-- historical_price_volume | 20D | Q1=0.0021, Q2=0.0033, Q3=0.0062, Q4=0.0054, Q5=0.0062 | top-bottom=0.0041
-- low_volatility_20d | 1D | Q1=0.0001, Q2=0.0003, Q3=0.0002, Q4=0.0002, Q5=0.0002 | top-bottom=0.0002
-- low_volatility_20d | 5D | Q1=0.0010, Q2=0.0014, Q3=0.0011, Q4=0.0009, Q5=0.0011 | top-bottom=0.0002
-- low_volatility_20d | 10D | Q1=0.0022, Q2=0.0023, Q3=0.0026, Q4=0.0018, Q5=0.0025 | top-bottom=0.0003
-- low_volatility_20d | 20D | Q1=0.0052, Q2=0.0046, Q3=0.0048, Q4=0.0040, Q5=0.0047 | top-bottom=-0.0005
-- momentum_60d | 1D | Q1=0.0002, Q2=0.0001, Q3=0.0002, Q4=0.0001, Q5=0.0004 | top-bottom=0.0002
-- momentum_60d | 5D | Q1=0.0006, Q2=0.0005, Q3=0.0010, Q4=0.0014, Q5=0.0018 | top-bottom=0.0011
-- momentum_60d | 10D | Q1=0.0005, Q2=0.0011, Q3=0.0026, Q4=0.0028, Q5=0.0036 | top-bottom=0.0031
-- momentum_60d | 20D | Q1=-0.0002, Q2=0.0024, Q3=0.0055, Q4=0.0062, Q5=0.0078 | top-bottom=0.0080
-- volume_ratio_5d_60d | 1D | Q1=0.0001, Q2=0.0002, Q3=0.0002, Q4=0.0003, Q5=0.0001 | top-bottom=-0.0000
-- volume_ratio_5d_60d | 5D | Q1=0.0011, Q2=0.0013, Q3=0.0009, Q4=0.0010, Q5=0.0009 | top-bottom=-0.0002
-- volume_ratio_5d_60d | 10D | Q1=0.0022, Q2=0.0026, Q3=0.0014, Q4=0.0016, Q5=0.0026 | top-bottom=0.0005
-- volume_ratio_5d_60d | 20D | Q1=0.0047, Q2=0.0049, Q3=0.0031, Q4=0.0041, Q5=0.0047 | top-bottom=0.0000
+- historical_price_volume | 1D | Q1=0.0002, Q2=0.0001, Q3=0.0003, Q4=0.0004, Q5=0.0006 | top-bottom=0.0004
+- historical_price_volume | 5D | Q1=0.0010, Q2=0.0011, Q3=0.0020, Q4=0.0018, Q5=0.0027 | top-bottom=0.0017
+- historical_price_volume | 10D | Q1=0.0021, Q2=0.0025, Q3=0.0043, Q4=0.0032, Q5=0.0056 | top-bottom=0.0035
+- historical_price_volume | 20D | Q1=0.0038, Q2=0.0057, Q3=0.0085, Q4=0.0077, Q5=0.0100 | top-bottom=0.0061
+- low_volatility_20d | 1D | Q1=0.0002, Q2=0.0004, Q3=0.0003, Q4=0.0003, Q5=0.0004 | top-bottom=0.0002
+- low_volatility_20d | 5D | Q1=0.0013, Q2=0.0018, Q3=0.0017, Q4=0.0017, Q5=0.0020 | top-bottom=0.0007
+- low_volatility_20d | 10D | Q1=0.0029, Q2=0.0033, Q3=0.0040, Q4=0.0033, Q5=0.0043 | top-bottom=0.0014
+- low_volatility_20d | 20D | Q1=0.0067, Q2=0.0065, Q3=0.0074, Q4=0.0067, Q5=0.0084 | top-bottom=0.0016
+- momentum_60d | 1D | Q1=0.0003, Q2=0.0002, Q3=0.0003, Q4=0.0003, Q5=0.0005 | top-bottom=0.0002
+- momentum_60d | 5D | Q1=0.0011, Q2=0.0011, Q3=0.0017, Q4=0.0023, Q5=0.0022 | top-bottom=0.0012
+- momentum_60d | 10D | Q1=0.0015, Q2=0.0024, Q3=0.0039, Q4=0.0046, Q5=0.0045 | top-bottom=0.0030
+- momentum_60d | 20D | Q1=0.0019, Q2=0.0052, Q3=0.0080, Q4=0.0094, Q5=0.0098 | top-bottom=0.0079
+- volume_ratio_5d_60d | 1D | Q1=0.0002, Q2=0.0003, Q3=0.0003, Q4=0.0005, Q5=0.0004 | top-bottom=0.0002
+- volume_ratio_5d_60d | 5D | Q1=0.0015, Q2=0.0017, Q3=0.0014, Q4=0.0018, Q5=0.0020 | top-bottom=0.0005
+- volume_ratio_5d_60d | 10D | Q1=0.0029, Q2=0.0036, Q3=0.0025, Q4=0.0031, Q5=0.0046 | top-bottom=0.0016
+- volume_ratio_5d_60d | 20D | Q1=0.0065, Q2=0.0073, Q3=0.0057, Q4=0.0070, Q5=0.0077 | top-bottom=0.0012
 
 ## Factor Turnover
 
-- historical_price_volume | avg top-quantile turnover=0.1559 | dates=1922
-- low_volatility_20d | avg top-quantile turnover=0.0587 | dates=1922
-- momentum_60d | avg top-quantile turnover=0.0970 | dates=1882
-- volume_ratio_5d_60d | avg top-quantile turnover=0.1706 | dates=1883
+- historical_price_volume | avg top-quantile turnover=0.1539 | dates=1923
+- low_volatility_20d | avg top-quantile turnover=0.0572 | dates=1923
+- momentum_60d | avg top-quantile turnover=0.0957 | dates=1883
+- volume_ratio_5d_60d | avg top-quantile turnover=0.1707 | dates=1884
 
 ## Monotonicity Check
 
-- historical_price_volume | 1D | monotonicity_pass=false | score=0.5000 | notes=non-monotonic quantile-return ordering
-- historical_price_volume | 5D | monotonicity_pass=false | score=0.5000 | notes=non-monotonic quantile-return ordering
-- historical_price_volume | 10D | monotonicity_pass=false | score=0.5000 | notes=non-monotonic quantile-return ordering
+- historical_price_volume | 1D | monotonicity_pass=false | score=0.7500 | notes=non-monotonic quantile-return ordering
+- historical_price_volume | 5D | monotonicity_pass=false | score=0.7500 | notes=non-monotonic quantile-return ordering
+- historical_price_volume | 10D | monotonicity_pass=false | score=0.7500 | notes=non-monotonic quantile-return ordering
 - historical_price_volume | 20D | monotonicity_pass=false | score=0.7500 | notes=non-monotonic quantile-return ordering
 - low_volatility_20d | 1D | monotonicity_pass=false | score=0.5000 | notes=non-monotonic quantile-return ordering
 - low_volatility_20d | 5D | monotonicity_pass=false | score=0.5000 | notes=non-monotonic quantile-return ordering
 - low_volatility_20d | 10D | monotonicity_pass=false | score=0.7500 | notes=non-monotonic quantile-return ordering
 - low_volatility_20d | 20D | monotonicity_pass=false | score=0.5000 | notes=non-monotonic quantile-return ordering
-- momentum_60d | 1D | monotonicity_pass=false | score=0.5000 | notes=non-monotonic quantile-return ordering
+- momentum_60d | 1D | monotonicity_pass=false | score=0.7500 | notes=non-monotonic quantile-return ordering
 - momentum_60d | 5D | monotonicity_pass=false | score=0.7500 | notes=non-monotonic quantile-return ordering
-- momentum_60d | 10D | monotonicity_pass=true | score=1.0000 | notes=monotonic increasing from Q1 to Q5
+- momentum_60d | 10D | monotonicity_pass=false | score=0.7500 | notes=non-monotonic quantile-return ordering
 - momentum_60d | 20D | monotonicity_pass=true | score=1.0000 | notes=monotonic increasing from Q1 to Q5
 - volume_ratio_5d_60d | 1D | monotonicity_pass=false | score=0.7500 | notes=non-monotonic quantile-return ordering
-- volume_ratio_5d_60d | 5D | monotonicity_pass=false | score=0.5000 | notes=non-monotonic quantile-return ordering
+- volume_ratio_5d_60d | 5D | monotonicity_pass=false | score=0.7500 | notes=non-monotonic quantile-return ordering
 - volume_ratio_5d_60d | 10D | monotonicity_pass=false | score=0.7500 | notes=non-monotonic quantile-return ordering
 - volume_ratio_5d_60d | 20D | monotonicity_pass=false | score=0.7500 | notes=non-monotonic quantile-return ordering
 

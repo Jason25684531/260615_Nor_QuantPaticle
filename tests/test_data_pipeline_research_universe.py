@@ -68,13 +68,13 @@ research:
             return OhlcvDownloadResult(
                 pd.DataFrame(
                     {
-                        "date": pd.date_range("2024-01-01", periods=3),
-                        "ticker": ["1101"] * 3,
-                        "open": [1.0] * 3,
-                        "high": [2.0] * 3,
-                        "low": [1.0] * 3,
-                        "close": [1.0] * 3,
-                        "volume": [100.0] * 3,
+                    "date": pd.date_range("2024-01-01", periods=5),
+                    "ticker": ["1101"] * 5,
+                    "open": [1.0] * 5,
+                    "high": [2.0] * 5,
+                    "low": [1.0] * 5,
+                    "close": [1.0] * 5,
+                    "volume": [100.0] * 5,
                     }
                 ),
                 [],
@@ -100,3 +100,30 @@ research:
     )
     assert ohlcv_entry["price_adjustment"] == "auto_adjusted"
     assert ohlcv_entry["schema_version"] == "ohlcv-v2"
+    assert "price_adjustment: auto_adjusted" in report
+    assert "liquidity_measure_source: proxy_close_times_volume" in report
+
+    original_ohlcv = outputs["ohlcv"].read_bytes()
+    config_path.write_text(
+        config_path.read_text(encoding="utf-8").replace("2024-01-05", "2024-01-06"),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="outside"):
+        pipeline.run_pipeline(config_path)
+    assert outputs["ohlcv"].read_bytes() == original_ohlcv
+
+    config_path.write_text(
+        config_path.read_text(encoding="utf-8")
+        .replace("2024-01-06", "2024-01-05")
+        .replace("fail_fast: true", "fail_fast: false"),
+        encoding="utf-8",
+    )
+
+    class EmptyYFinanceClient:
+        def download_ohlcv(self, **_):
+            return OhlcvDownloadResult(pd.DataFrame(), ["1101"])
+
+    monkeypatch.setattr(pipeline, "YFinanceClient", EmptyYFinanceClient)
+    with pytest.raises(RuntimeError, match="not overwritten"):
+        pipeline.run_pipeline(config_path)
+    assert outputs["ohlcv"].read_bytes() == original_ohlcv

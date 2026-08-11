@@ -29,7 +29,7 @@ research_quality:
 
 research:
   in_sample:
-    start: "2018-01-01"
+    start: "2018-01-02"
     end: "2022-12-31"
   out_of_sample:
     start: "2023-01-01"
@@ -38,6 +38,15 @@ research:
 twse:
   base_url: "https://openapi.twse.com.tw/v1"
   timeout_seconds: 30
+
+fundamental:
+  start_roc_year: 102
+  throttle_seconds: 0.5
+  retry: 3
+  availability_policy: next_trading_day
+  missing_publication_date: exclude
+  raw_cache_dir: "data/raw/fundamental"
+
 
 reference:
   repo: "ZJHuang915/PythonQuantTrading"
@@ -73,6 +82,11 @@ paths:
   composite_factor_report: "reports/composite_factor_report.md"
   backtest_report: "reports/backtest_report.md"
   manifest: "data/processed/_manifest.json"
+  fundamental_pit: "data/processed/fundamental_pit.parquet"
+  fundamental_matrix: "data/processed/fundamental_matrix.parquet"
+  valuation_daily: "data/processed/valuation_daily.parquet"
+  fundamental_coverage: "data/processed/fundamental_coverage.parquet"
+  fundamental_coverage_report: "reports/fundamental_coverage_report.md"
 
 week2:
   manifest_schema_version: "1.0.0"

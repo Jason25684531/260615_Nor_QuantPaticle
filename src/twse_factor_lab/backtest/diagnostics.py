@@ -219,6 +219,10 @@ def build_backtest_realism_report(
         if not base_cost_row.empty
         else None
     )
+    baseline = base_cost_row.iloc[0] if not base_cost_row.empty else pd.Series()
+
+    def _baseline(metric: str) -> str:
+        return _fmt(float(baseline[metric])) if metric in baseline else "N/A"
 
     cost_improved = (
         no_cost_return is not None
@@ -299,7 +303,7 @@ def build_backtest_realism_report(
         "",
         "> **研究聲明 Research Disclaimer**",
         "> - research backtest only · not investment advice · not production-ready",
-        f"> - OHLCV coverage: {ticker_count} / 1090 tickers (yfinance fallback)",
+        f"> - OHLCV coverage: {ticker_count} tickers (bounded yfinance fallback)",
         "> - valuation snapshot factors excluded (pb_inverse / pe_inverse / dividend_yield / latest_snapshot_mixed)",  # noqa: E501
         "",
         "---",
@@ -315,8 +319,9 @@ def build_backtest_realism_report(
         "",
         "## 2. Purpose",
         "",
-        "Week 3 baseline backtest produced total_return = -0.979297, Sharpe = -3.065453.",  # noqa: E501
-        "This report diagnoses whether the poor result is caused by:",
+        "Current baseline: "
+        f"total_return={_baseline('total_return')}, sharpe={_baseline('sharpe')}.",
+        "This report diagnoses performance through:",
         "1. Factor alpha weakness (signal itself has no predictive power)",
         "2. Transaction cost drag (daily rebalance × high costs)",
         "3. Excessive turnover overwhelming any gross return",
@@ -324,15 +329,20 @@ def build_backtest_realism_report(
         "",
         "## 3. Baseline Strategy Recap",
         "",
-        "- factor: historical_price_volume (equal-weight composite of momentum_60d, low_volatility_20d, volume_ratio_5d_60d)",  # noqa: E501
-        "- selection: Top 20 by composite score",
+        f"- factor: {factor_name}",
+        f"- selection: Top {top_n} by composite score",
         "- weighting: equal weight",
         "- execution: T+1 (signal at date T, trade at T+1)",
-        "- baseline result: total_return=-0.979297, annualized_return=-0.395379, sharpe=-3.065453, max_drawdown=-0.979297, turnover=0.596807",  # noqa: E501
+        "- baseline result: "
+        f"total_return={_baseline('total_return')}, "
+        f"annualized_return={_baseline('annualized_return')}, "
+        f"sharpe={_baseline('sharpe')}, "
+        f"max_drawdown={_baseline('max_drawdown')}, "
+        f"turnover={_baseline('turnover')}",
         "",
         "## 4. Universe Coverage",
         "",
-        f"- actual OHLCV tickers: {ticker_count} / 1090 TWSE listed",
+        f"- actual OHLCV tickers: {ticker_count}",
         "- data source: yfinance fallback (TWSE OpenAPI OHLCV not fully available)",
         "- survivorship bias caveat: delisted tickers may be underrepresented",
         "",
@@ -500,7 +510,7 @@ def build_backtest_realism_report(
         "",
         "## 13. Limitations",
         "",
-        "- OHLCV coverage is 100 / 1090 (9.2%) — small universe introduces concentration risk",  # noqa: E501
+        f"- OHLCV input is limited to {ticker_count} tickers; see data quality report.",
         "- yfinance fallback data may differ from official TWSE closing prices",
         "- Valuation snapshot factors (pb_inverse, pe_inverse, dividend_yield) excluded — composite is price-volume only",  # noqa: E501
         "- Backtest period and survivorship bias not fully controlled",

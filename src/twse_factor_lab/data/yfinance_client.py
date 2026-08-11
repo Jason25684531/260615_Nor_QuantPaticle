@@ -40,6 +40,7 @@ class YFinanceClient:
     ) -> OhlcvDownloadResult:
         frames: list[pd.DataFrame] = []
         failed: list[str] = []
+        query_end = (pd.Timestamp(end) + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
 
         for ticker in tickers:
             raw_ticker = clean_ticker(str(ticker))
@@ -48,7 +49,7 @@ class YFinanceClient:
                 frame = self._download(
                     yf_ticker,
                     start=start,
-                    end=end,
+                    end=query_end,
                     progress=False,
                     auto_adjust=True,
                 )
