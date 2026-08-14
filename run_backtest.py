@@ -39,6 +39,9 @@ def _path_map(config_path: str | Path, paths: dict[str, str]) -> dict[str, Path]
         "portfolio_weights": "data/processed/portfolio_weights.parquet",
         "backtest_results": "data/processed/backtest_results.parquet",
         "backtest_metrics": "data/processed/backtest_metrics.parquet",
+        "backtest_engine_comparison": (
+            "data/processed/backtest_engine_comparison.parquet"
+        ),
         "composite_factor_report": "reports/composite_factor_report.md",
         "backtest_report": "reports/backtest_report.md",
     }
@@ -338,6 +341,44 @@ def run_backtest(config_path: str | Path) -> dict[str, Path]:
         top_n=int(backtest_config.get("top_n", 20)),
         use_vectorbt=bool(vectorbt_config.get("use_vectorbt", True)),
         allow_fallback=bool(vectorbt_config.get("allow_fallback", True)),
+        artifacts_dir=str(paths["backtest_results"].parent),
+    )
+
+    _, custom_metrics = run_weight_backtest(
+        close_matrix=close_matrix,
+        portfolio_weights=portfolio_weights,
+        cost_model=cost_model,
+        initial_cash=float(backtest_config.get("initial_cash", 1_000_000)),
+        top_n=int(backtest_config.get("top_n", 20)),
+        use_vectorbt=False,
+    )
+    metric_names = [
+        "total_return",
+        "annualized_return",
+        "annualized_volatility",
+        "sharpe",
+        "max_drawdown",
+        "win_rate",
+        "turnover",
+    ]
+    selected_metrics = (
+        backtest_metrics
+        if backtest_metrics.loc[0, "actual_engine"] == "vectorbt"
+        else custom_metrics
+    )
+    comparison = pd.DataFrame(
+        {
+            "metric": metric_names,
+            "custom": [float(custom_metrics.loc[0, name]) for name in metric_names],
+            "vectorbt": [float(selected_metrics.loc[0, name]) for name in metric_names],
+        }
+    )
+    comparison["absolute_delta"] = (comparison["custom"] - comparison["vectorbt"]).abs()
+    comparison["relative_delta"] = comparison["absolute_delta"] / comparison[
+        "custom"
+    ].abs().replace(0, 1.0)
+    comparison["status"] = (comparison["absolute_delta"] <= 1e-3).map(
+        {True: "pass", False: "review"}
     )
 
     store.save(scoreboard, paths["factor_scoreboard"])
@@ -346,6 +387,7 @@ def run_backtest(config_path: str | Path) -> dict[str, Path]:
     store.save(portfolio_weights, paths["portfolio_weights"])
     store.save(backtest_results, paths["backtest_results"])
     store.save(backtest_metrics, paths["backtest_metrics"])
+    store.save(comparison, paths["backtest_engine_comparison"])
 
     composite_report = build_composite_factor_report(
         config_path=config_path,
@@ -390,6 +432,7 @@ def run_backtest(config_path: str | Path) -> dict[str, Path]:
             "portfolio_weights": portfolio_weights,
             "backtest_results": backtest_results,
             "backtest_metrics": backtest_metrics,
+            "backtest_engine_comparison": comparison,
         }.items()
     ]
     append_manifest_entries(entries, paths["manifest"])

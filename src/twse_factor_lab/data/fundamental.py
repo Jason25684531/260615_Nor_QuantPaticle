@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import pandas as pd
 import requests
@@ -35,11 +36,51 @@ class FundamentalDataError(RuntimeError):
     """Raised when a source response cannot safely become PIT data."""
 
 
+RESPONSE_CLASSIFICATIONS = {
+    "SUCCESS",
+    "TIMEOUT",
+    "HTTP_ERROR",
+    "SECURITY_BLOCK",
+    "EMPTY_RESPONSE",
+    "INVALID_HTML",
+    "PARSE_ERROR",
+}
+
+
+def classify_response(status_code: int, content: str, *, expects_html: bool) -> str:
+    """Classify a source reply before allowing it into the raw success cache."""
+
+    if not 200 <= status_code < 300:
+        return "HTTP_ERROR"
+    if not content.strip():
+        return "EMPTY_RESPONSE"
+    lowered = content.lower()
+    security_markers = (
+        "access denied",
+        "security check",
+        "security verification",
+        "for security reasons",
+        "captcha",
+        "cf-chl-",
+        "請完成驗證",
+        "拒絕存取",
+        "禁止存取",
+        "因為安全性考量",
+    )
+    if any(marker in lowered for marker in security_markers):
+        return "SECURITY_BLOCK"
+    if expects_html and "<html" not in lowered and "<table" not in lowered:
+        return "INVALID_HTML"
+    return "SUCCESS"
+
+
 class RawFundamentalCache:
     """Small content cache with request metadata for reproducible ingestion."""
 
     def __init__(self, root: str | Path) -> None:
         self.root = Path(root)
+        self.hits = 0
+        self.misses = 0
 
     @staticmethod
     def _key(url: str, params: dict[str, Any] | None) -> str:
@@ -48,19 +89,39 @@ class RawFundamentalCache:
 
     def get(self, url: str, params: dict[str, Any] | None = None) -> str | None:
         path = self.root / f"{self._key(url, params)}.raw"
-        return path.read_text(encoding="utf-8") if path.exists() else None
+        if path.exists():
+            path.with_suffix(".gap.json").unlink(missing_ok=True)
+            self.hits += 1
+            return path.read_text(encoding="utf-8")
+        self.misses += 1
+        return None
 
-    def put(self, url: str, params: dict[str, Any] | None, content: str) -> Path:
+    def statistics(self) -> dict[str, int]:
+        """Return this run's cache activity for the coverage report."""
+
+        return {"hits": self.hits, "misses": self.misses}
+
+    def put(
+        self,
+        url: str,
+        params: dict[str, Any] | None,
+        content: str,
+        *,
+        metadata: dict[str, Any],
+    ) -> Path:
         self.root.mkdir(parents=True, exist_ok=True)
         key = self._key(url, params)
         raw_path = self.root / f"{key}.raw"
         raw_path.write_text(content, encoding="utf-8")
+        (self.root / f"{key}.gap.json").unlink(missing_ok=True)
         (self.root / f"{key}.json").write_text(
             json.dumps(
                 {
                     "url": url,
                     "params": params or {},
                     "fetched_at": datetime.now(UTC).isoformat(),
+                    "content_hash": hashlib.sha256(content.encode()).hexdigest(),
+                    **metadata,
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -68,6 +129,18 @@ class RawFundamentalCache:
             encoding="utf-8",
         )
         return raw_path
+
+    def record_gap(
+        self, url: str, params: dict[str, Any] | None, *, metadata: dict[str, Any]
+    ) -> None:
+        """Persist the latest failed checkpoint without treating it as cached data."""
+
+        self.root.mkdir(parents=True, exist_ok=True)
+        key = self._key(url, params)
+        (self.root / f"{key}.gap.json").write_text(
+            json.dumps({"url": url, "params": params or {}, **metadata}, indent=2),
+            encoding="utf-8",
+        )
 
 
 class FundamentalClient:
@@ -81,6 +154,7 @@ class FundamentalClient:
         cache: RawFundamentalCache,
         twse_base_url: str,
         timeout: int = 30,
+        mops_timeout: int | None = None,
         throttle_seconds: float = 0.5,
         retry: int = 3,
         session: requests.Session | None = None,
@@ -88,6 +162,7 @@ class FundamentalClient:
         self.cache = cache
         self.twse_base_url = twse_base_url.rstrip("/")
         self.timeout = timeout
+        self.mops_timeout = mops_timeout or timeout
         self.throttle_seconds = max(0.0, throttle_seconds)
         self.retry = max(0, retry)
         self.session = session or requests.Session()
@@ -105,6 +180,7 @@ class FundamentalClient:
             return cached
         headers = {"User-Agent": self.browser_user_agent}
         error: Exception | None = None
+        requested_at = datetime.now(UTC).isoformat()
         for attempt in range(self.retry + 1):
             try:
                 response = self.session.request(
@@ -113,21 +189,74 @@ class FundamentalClient:
                     params=params,
                     data=data,
                     headers=headers,
-                    timeout=self.timeout,
+                    timeout=(
+                        self.mops_timeout
+                        if "mopsov.twse.com.tw" in url
+                        else self.timeout
+                    ),
                 )
                 response.raise_for_status()
                 encoding = "big5" if "t21sc03_" in url else response.encoding or "utf-8"
                 content = response.content.decode(encoding, "replace")
-                if not content.strip():
-                    raise FundamentalDataError(f"Empty source response: {url}")
-                return self.cache.put(url, request_params, content).read_text(
-                    encoding="utf-8"
+                classification = classify_response(
+                    getattr(response, "status_code", 200),
+                    content,
+                    expects_html=any(
+                        marker in url
+                        for marker in (
+                            "ajax_t163",
+                            "ajax_t164",
+                            "t57sb01",
+                            "t21sc03_",
+                        )
+                    ),
                 )
+                if classification != "SUCCESS":
+                    raise FundamentalDataError(f"{classification}: {url}")
+                return self.cache.put(
+                    url,
+                    request_params,
+                    content,
+                    metadata={
+                        "source": urlparse(url).netloc,
+                        "endpoint": urlparse(url).path,
+                        "request_params": request_params,
+                        "requested_at": requested_at,
+                        "response_status": getattr(response, "status_code", 200),
+                        "classification": classification,
+                        "encoding": encoding,
+                    },
+                ).read_text(encoding="utf-8")
             except Exception as exc:  # requests errors are retriable here.
                 error = exc
                 if attempt < self.retry:
-                    time.sleep(self.throttle_seconds + random.uniform(0, 0.1))
-        raise FundamentalDataError(f"Source request failed: {url}") from error
+                    time.sleep(
+                        self.throttle_seconds * (2**attempt)
+                        + random.uniform(0, min(0.25, self.throttle_seconds))
+                    )
+        classification = (
+            "TIMEOUT"
+            if isinstance(error, requests.Timeout) or "timed out" in str(error).lower()
+            else "HTTP_ERROR"
+        )
+        if isinstance(error, FundamentalDataError):
+            classification = str(error).split(":", maxsplit=1)[0]
+        self.cache.record_gap(
+            url,
+            request_params,
+            metadata={
+                "source": urlparse(url).netloc,
+                "endpoint": urlparse(url).path,
+                "request_params": request_params,
+                "requested_at": requested_at,
+                "classification": classification,
+                "retry_count": self.retry + 1,
+                "error": str(error),
+            },
+        )
+        raise FundamentalDataError(
+            f"Source request failed after {self.retry + 1} attempts: {url} ({error})"
+        ) from error
 
     def mops_statement(self, year: int, season: int, statement: str) -> pd.DataFrame:
         endpoint = "mops_income" if statement == "income" else "mops_balance"
@@ -141,7 +270,11 @@ class FundamentalClient:
             "TYPEK": "sii",
         }
         html = self._request("POST", get_fundamental_endpoint(endpoint), data=payload)
-        return parse_mops_statement(html, year=year, season=season)
+        parsed = parse_mops_statement(html, year=year, season=season)
+        metrics = (
+            {"revenue", "net_income", "eps"} if statement == "income" else {"equity"}
+        )
+        return parsed.loc[parsed["metric"].isin(metrics)].reset_index(drop=True)
 
     def publication_dates(self, ticker: str, year: int) -> pd.DataFrame:
         records: list[pd.DataFrame] = []
@@ -157,9 +290,14 @@ class FundamentalClient:
             html = self._request(
                 "POST", get_fundamental_endpoint("publication_dates"), data=payload
             )
-            parsed = parse_publication_dates(
-                html, ticker=clean_ticker(ticker), year=year
-            )
+            try:
+                parsed = parse_publication_dates(
+                    html, ticker=clean_ticker(ticker), year=year
+                )
+            except FundamentalDataError:
+                if "查無所需資料" not in html:
+                    raise
+                continue
             if not parsed.empty:
                 records.append(parsed)
         return (
@@ -229,6 +367,13 @@ def _tables(html: str) -> list[pd.DataFrame]:
     parser.feed(html)
     tables: list[pd.DataFrame] = []
     for rows, has_header in parser.tables:
+        has_header = (
+            has_header
+            or bool(rows)
+            and any(
+                value in {"公司", "代號", "公司代號", "ticker"} for value in rows[0]
+            )
+        )
         if has_header and len(rows) > 1:
             header_index = next(
                 (
@@ -293,6 +438,9 @@ def parse_mops_statement(html: str, *, year: int, season: int) -> pd.DataFrame:
         ticker_column = ticker_column or _column(
             frame, ("公司代號", "證券代號", "股票代號")
         )
+        ticker_column = ticker_column or _column(
+            frame, ("公司代號", "證券代號", "代號")
+        )
         if ticker_column is None:
             continue
         for _, row in frame.iterrows():
@@ -300,8 +448,13 @@ def parse_mops_statement(html: str, *, year: int, season: int) -> pd.DataFrame:
             if pd.isna(ticker) or not str(ticker).isdigit():
                 continue
             for metric, aliases in mappings.items():
-                aliases = (*aliases, *common_aliases[metric])
-                column = _column(frame, aliases)
+                if metric == "equity":
+                    column = _column(frame, ("權益總計", "權益合計", "權益總額"))
+                    column = column or _column(
+                        frame, (*aliases, *common_aliases[metric])
+                    )
+                else:
+                    column = _column(frame, (*aliases, *common_aliases[metric]))
                 value = (
                     pd.to_numeric(str(row[column]).replace(",", ""), errors="coerce")
                     if column
@@ -483,10 +636,26 @@ def parse_valuation_daily(raw: str, *, date: str | pd.Timestamp) -> pd.DataFrame
 
 def next_trading_day(date: object, trading_days: pd.DatetimeIndex) -> pd.Timestamp:
     days = pd.DatetimeIndex(sorted(set(pd.to_datetime(trading_days))))
-    position = days.searchsorted(pd.Timestamp(date), side="right")
+    timestamp = pd.Timestamp(date)
+    if timestamp < days[0]:
+        raise FundamentalDataError(
+            "Publication date precedes trading calendar coverage"
+        )
+    position = days.searchsorted(timestamp, side="right")
     if position >= len(days):
         raise FundamentalDataError("No trading day after publication date")
     return days[position]
+
+
+def _available_date_or_gap(
+    date: object, trading_days: pd.DatetimeIndex
+) -> pd.Timestamp:
+    """Never fabricate an available_date outside the known trading calendar."""
+
+    try:
+        return next_trading_day(date, trading_days)
+    except FundamentalDataError:
+        return pd.NaT
 
 
 def _quarter_end(roc_year: int, season: int) -> pd.Timestamp:
@@ -516,14 +685,18 @@ def build_financial_pit(
         ] + pd.Timedelta(days=45)
     frame["publication_date"] = pd.to_datetime(frame["publication_date"])
     frame["available_date"] = frame["publication_date"].map(
-        lambda value: next_trading_day(value, trading_days)
+        lambda value: _available_date_or_gap(value, trading_days)
     )
     frame["source"] = "mops+doc.twse"
     frame["pit_status"] = "PUBLICATION_DATE_AWARE"
     if missing_publication_date == "legal_deadline" and missing.any():
         frame.loc[missing, "source"] = "mops+legal_deadline"
         frame.loc[missing, "pit_status"] = "PERIOD_ONLY"
-    return frame[PIT_COLUMNS].dropna(subset=["value"]).reset_index(drop=True)
+    return (
+        frame[PIT_COLUMNS]
+        .dropna(subset=["value", "available_date"])
+        .reset_index(drop=True)
+    )
 
 
 def build_monthly_revenue_pit(
@@ -533,13 +706,17 @@ def build_monthly_revenue_pit(
     frame["period_end"] = pd.to_datetime(frame["revenue_month"])
     frame["publication_date"] = frame["period_end"] + pd.Timedelta(days=10)
     frame["available_date"] = frame["publication_date"].map(
-        lambda value: next_trading_day(value, trading_days)
+        lambda value: _available_date_or_gap(value, trading_days)
     )
     frame["metric"] = "revenue"
     frame["value"] = frame["revenue"]
     frame["source"] = "mops_t21sc03"
     frame["pit_status"] = "PERIOD_ONLY"
-    return frame[PIT_COLUMNS].dropna(subset=["value"]).reset_index(drop=True)
+    return (
+        frame[PIT_COLUMNS]
+        .dropna(subset=["value", "available_date"])
+        .reset_index(drop=True)
+    )
 
 
 def build_valuation_pit(valuation: pd.DataFrame) -> pd.DataFrame:
@@ -580,7 +757,12 @@ def derive_metrics(pit: pd.DataFrame) -> pd.DataFrame:
     revenue = pit[pit["metric"] == "revenue"].copy()
     revenue = revenue.sort_values(["ticker", "period_end", "available_date"])
     revenue["previous"] = revenue.groupby("ticker")["value"].shift(12)
-    revenue["value"] = revenue["value"].div(revenue["previous"]).sub(1)
+    current = pd.to_numeric(revenue["value"], errors="coerce")
+    # A zero prior-year base makes YoY growth undefined; exclude rather than
+    # fabricate +/-inf (previous dtype can be a plain Python object here, so
+    # true-division by zero raises ZeroDivisionError instead of producing inf).
+    previous = pd.to_numeric(revenue["previous"], errors="coerce").replace(0, pd.NA)
+    revenue["value"] = current.div(previous).sub(1)
     revenue = revenue.dropna(subset=["value"])
     revenue["metric"] = "revenue_yoy"
     revenue["source"] = "derived_revenue_yoy"
@@ -613,11 +795,11 @@ def build_fundamental_matrix(
         raise ValueError("SNAPSHOT_ONLY records cannot enter the historical matrix")
     pit = pit.copy()
     for column in ("period_end", "publication_date", "available_date"):
-        pit[column] = pd.to_datetime(pit[column])
+        pit[column] = pd.to_datetime(pit[column]).astype("datetime64[ns]")
     eligible = research_universe.loc[
         research_universe["is_eligible"].astype(bool), ["date", "ticker"]
     ].copy()
-    eligible["date"] = pd.to_datetime(eligible["date"])
+    eligible["date"] = pd.to_datetime(eligible["date"]).astype("datetime64[ns]")
     eligible["ticker"] = eligible["ticker"].astype(str)
     records: list[pd.DataFrame] = []
     for (ticker, _metric), values in pit.groupby(["ticker", "metric"], sort=False):
@@ -657,11 +839,13 @@ def query_fundamentals(
 def build_fundamental_coverage(
     pit: pd.DataFrame, research_universe: pd.DataFrame
 ) -> pd.DataFrame:
-    denominator = int(
+    eligible_tickers = set(
         research_universe.loc[
             research_universe["is_eligible"].astype(bool), "ticker"
-        ].nunique()
+        ].astype(str)
     )
+    denominator = len(eligible_tickers)
+    pit = pit.loc[pit["ticker"].astype(str).isin(eligible_tickers)]
     counts = {
         "financial_statement_coverage": pit.loc[
             pit["source"].eq("mops+doc.twse"), "ticker"
@@ -697,9 +881,71 @@ def build_fundamental_coverage(
     return pd.DataFrame(rows)
 
 
-def build_fundamental_coverage_report(coverage: pd.DataFrame, pit: pd.DataFrame) -> str:
+def build_publication_coverage_audit(
+    statements: pd.DataFrame,
+    publications: pd.DataFrame,
+    *,
+    years: tuple[int, ...] = (102, 103, 104),
+) -> pd.DataFrame:
+    """Audit actual doc.twse matches; absent dates are never invented."""
+
+    keys = ["ticker", "roc_year", "season"]
+    expected = (
+        statements[keys].drop_duplicates()
+        if not statements.empty
+        else pd.DataFrame(columns=keys)
+    )
+    found = (
+        publications[keys].drop_duplicates()
+        if not publications.empty
+        else pd.DataFrame(columns=keys)
+    )
+    rows: list[dict[str, object]] = []
+    for year in years:
+        period = expected.loc[expected["roc_year"] == year]
+        merged = period.merge(found, on=keys, how="left", indicator=True)
+        statement_count = len(period)
+        found_count = int(merged["_merge"].eq("both").sum())
+        missing = statement_count - found_count
+        rows.append(
+            {
+                "year": year + 1911,
+                "financial_statement_count": statement_count,
+                "publication_date_found": found_count,
+                "publication_date_missing": missing,
+                "coverage_ratio": found_count / statement_count
+                if statement_count
+                else 0.0,
+                "downgraded_count": 0,
+                "excluded_count": missing,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def build_fundamental_coverage_report(
+    coverage: pd.DataFrame,
+    pit: pd.DataFrame,
+    *,
+    publication_audit: pd.DataFrame | None = None,
+    live_pipeline_status: str = "PASS",
+    failed_requests: list[str] | None = None,
+    cache_statistics: dict[str, int] | None = None,
+) -> str:
     statuses = pit["pit_status"].value_counts().to_dict()
-    lines = ["# Fundamental Coverage Report", "", "## Coverage", ""]
+    lines = [
+        "# Fundamental Coverage Report",
+        "",
+        "## Live Pipeline Status",
+        "",
+        f"- status: {live_pipeline_status}",
+    ]
+    if cache_statistics:
+        lines += [
+            f"- raw_cache_hits: {cache_statistics['hits']}",
+            f"- raw_cache_misses: {cache_statistics['misses']}",
+        ]
+    lines += ["", "## Coverage", ""]
     lines += [
         f"- {row.metric}: {row.coverage_ratio:.4f} "
         f"({row.covered_tickers}/{row.eligible_tickers})"
@@ -707,6 +953,18 @@ def build_fundamental_coverage_report(coverage: pd.DataFrame, pit: pd.DataFrame)
     ]
     lines += ["", "## PIT Status", ""]
     lines += [f"- {name}: {count}" for name, count in sorted(statuses.items())]
+    if publication_audit is not None:
+        lines += ["", "## 2013–2015 Publication-Date Coverage", ""]
+        lines += [
+            "- {year}: financial_statement_count={financial_statement_count}, "
+            "publication_date_found={publication_date_found}, "
+            "publication_date_missing={publication_date_missing}, "
+            "coverage_ratio={coverage_ratio:.4f}, downgraded_count={downgraded_count}, "
+            "excluded_count={excluded_count}".format(**row)
+            for row in publication_audit.to_dict("records")
+        ]
+    lines += ["", "## Failed Requests", ""]
+    lines += [f"- {item}" for item in (failed_requests or ["None"])]
     lines += [
         "",
         "## Known Limitations",
@@ -715,5 +973,10 @@ def build_fundamental_coverage_report(coverage: pd.DataFrame, pit: pd.DataFrame)
         "- Financial statements require doc.twse publication-date coverage and may be excluded when absent.",
         "- 2013–2015 publication-date completeness and financial-industry mappings require coverage review.",
         "- Valuation snapshots remain SNAPSHOT_ONLY and are excluded from historical matrices.",
+        "- Records whose publication_date precedes the OHLCV trading calendar's "
+        "earliest date have no real next-trading-day to derive available_date from; "
+        "they are excluded from fundamental_pit rather than fabricated (see "
+        "Publication-Date Coverage above for raw statement/publication counts in "
+        "that range).",
     ]
     return "\n".join(lines)

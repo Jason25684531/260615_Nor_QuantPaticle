@@ -18,6 +18,7 @@ from twse_factor_lab.data.fundamental import (
     build_fundamental_coverage_report,
     build_fundamental_matrix,
     build_monthly_revenue_pit,
+    build_publication_coverage_audit,
     build_valuation_pit,
     derive_metrics,
     validate_pit_records,
@@ -37,12 +38,42 @@ def _concat(frames: list[pd.DataFrame]) -> pd.DataFrame:
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
 
+def _write_fundamental_status(
+    config_path: str | Path,
+    paths: dict[str, str],
+    *,
+    status: str,
+    report: str,
+) -> None:
+    """Publish run diagnostics without touching fundamental parquet artifacts."""
+
+    report_path = resolve_path(config_path, paths["fundamental_coverage_report"])
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(report, encoding="utf-8")
+    quality_report = paths.get("data_quality_report")
+    if quality_report:
+        quality_path = resolve_path(config_path, quality_report)
+        if quality_path.exists():
+            summary = quality_path.read_text(encoding="utf-8")
+            line = f"- live_fundamental_pipeline_status: {status}"
+            if "- live_fundamental_pipeline_status:" in summary:
+                import re
+
+                summary = re.sub(
+                    r"- live_fundamental_pipeline_status:.*", line, summary
+                )
+            else:
+                summary = summary.rstrip() + "\n\n## Fundamental Coverage\n\n" + line
+            quality_path.write_text(summary + "\n", encoding="utf-8")
+
+
 def collect_fundamental_data(
     client: FundamentalClient,
     *,
     ohlcv: pd.DataFrame,
     research_universe: pd.DataFrame,
     start_roc_year: int,
+    acceptance_tickers: tuple[str, ...] = (),
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, list[str]]:
     """Fetch source rows, retaining successful source partitions only."""
 
@@ -65,11 +96,17 @@ def collect_fundamental_data(
             except FundamentalDataError as exc:
                 errors.append(f"monthly_revenue {year}-{month:02d}: {exc}")
 
-    tickers = (
-        research_universe.loc[research_universe["is_eligible"].astype(bool), "ticker"]
-        .astype(str)
-        .drop_duplicates()
-    )
+    tickers = pd.concat(
+        [
+            research_universe.loc[
+                research_universe["is_eligible"].astype(bool), "ticker"
+            ]
+            .astype(str)
+            .drop_duplicates(),
+            pd.Series(acceptance_tickers, dtype="string"),
+        ],
+        ignore_index=True,
+    ).drop_duplicates()
     for ticker in tickers:
         for year in years:
             try:
@@ -112,6 +149,7 @@ def run_pipeline(config_path: str | Path) -> dict[str, Path]:
         cache=cache,
         twse_base_url=config["twse"]["base_url"],
         timeout=int(config["twse"].get("timeout_seconds", 30)),
+        mops_timeout=int(fundamental.get("mops_timeout_seconds", 90)),
         throttle_seconds=float(fundamental.get("throttle_seconds", 0.5)),
         retry=int(fundamental.get("retry", 3)),
     )
@@ -120,12 +158,43 @@ def run_pipeline(config_path: str | Path) -> dict[str, Path]:
         ohlcv=ohlcv,
         research_universe=research_universe,
         start_roc_year=int(fundamental["start_roc_year"]),
+        acceptance_tickers=tuple(map(str, fundamental.get("acceptance_tickers", []))),
     )
-    if statements.empty or publications.empty or revenue.empty or valuation.empty:
-        raise RuntimeError(
-            "Fundamental pipeline produced incomplete source data; existing artifacts "
-            "were not overwritten. " + "; ".join(errors[:10])
+    total_failure = (
+        statements.empty and publications.empty and revenue.empty and valuation.empty
+    )
+    if total_failure:
+        cache_stats = cache.statistics()
+        failure_report = "\n".join(
+            [
+                "# Fundamental Coverage Report",
+                "",
+                "## Live Pipeline Status",
+                "",
+                "- status: FAILED",
+                f"- raw_cache_hits: {cache_stats['hits']}",
+                f"- raw_cache_misses: {cache_stats['misses']}",
+                "- artifact action: existing fundamental artifacts were preserved",
+                "",
+                "## Failed Requests",
+                "",
+                *[f"- {item}" for item in errors[:100]],
+                "",
+                "## Known Limitations",
+                "",
+                "- A failed source partition is not fabricated and is retried on "
+                "the next run.",
+                "- Successful raw responses are reused from the raw cache.",
+            ]
         )
+        _write_fundamental_status(
+            config_path, paths, status="FAILED", report=failure_report
+        )
+        raise RuntimeError(
+            "Fundamental pipeline collected no source data at all; existing "
+            "artifacts were not overwritten. " + "; ".join(errors[:10])
+        )
+    live_status = "PARTIAL" if errors else "PASS"
 
     calendar = pd.DatetimeIndex(pd.to_datetime(ohlcv["date"]).drop_duplicates())
     financial = build_financial_pit(
@@ -160,23 +229,16 @@ def run_pipeline(config_path: str | Path) -> dict[str, Path]:
     store.save(valuation, outputs["valuation_daily"])
     store.save(coverage, outputs["fundamental_coverage"])
     outputs["fundamental_coverage_report"].parent.mkdir(parents=True, exist_ok=True)
-    report = build_fundamental_coverage_report(coverage, pit)
-    if errors:
-        report += "\n\n## Source Gaps\n\n" + "\n".join(f"- {item}" for item in errors)
-    outputs["fundamental_coverage_report"].write_text(report, encoding="utf-8")
-    quality_report = paths.get("data_quality_report")
-    if quality_report:
-        quality_path = resolve_path(config_path, quality_report)
-        if quality_path.exists():
-            marker = "## Fundamental Coverage"
-            summary = quality_path.read_text(encoding="utf-8")
-            if marker not in summary:
-                quality_path.write_text(
-                    summary.rstrip()
-                    + f"\n\n{marker}\n\n"
-                    + f"- report: {outputs['fundamental_coverage_report']}\n",
-                    encoding="utf-8",
-                )
+    publication_audit = build_publication_coverage_audit(statements, publications)
+    report = build_fundamental_coverage_report(
+        coverage,
+        pit,
+        publication_audit=publication_audit,
+        live_pipeline_status=live_status,
+        failed_requests=errors or None,
+        cache_statistics=cache.statistics(),
+    )
+    _write_fundamental_status(config_path, paths, status=live_status, report=report)
     created_at = datetime.now(UTC)
     append_manifest_entries(
         [

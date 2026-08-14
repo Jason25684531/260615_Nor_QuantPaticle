@@ -77,3 +77,7 @@ data/mock_broker_state.json
 test_broker_state.json
 
 /data/
+
+reports/*
+.tokensave/*
+pyproject.toml

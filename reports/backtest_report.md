@@ -2,7 +2,7 @@
 
 ## Run Metadata
 
-- generated_at: 2026-08-11T03:41:36.959138+00:00
+- generated_at: 2026-08-13T07:12:01.535476+00:00
 - config_path: config\strategy.yaml
 - pipeline_name: run_backtest.py
 
@@ -45,16 +45,16 @@
 
 ## Backtest Engine
 
-- engine: fallback_weight_engine
+- engine: vectorbt
 
 ## Backtest Metrics
 
-- total_return: -0.24322720916718055
-- annualized_return: -0.035499918251792995
-- annualized_volatility: 0.14190615507192356
-- sharpe: -0.2501647531342122
-- max_drawdown: -0.39773815469647567
-- win_rate: 0.4981986618630983
+- total_return: -0.27756135309168006
+- annualized_return: -0.041290564112102746
+- annualized_volatility: 0.14179256909813193
+- sharpe: -0.29120400578627176
+- max_drawdown: -0.4133058057052825
+- win_rate: 0.49562532166752443
 - turnover: 0.14060730828615545
 - avg_exposure: 0.9891919711785898
 - start_date: 2018-01-02
@@ -62,12 +62,14 @@
 - ticker_count: 100
 - top_n: 20
 - cost_model_summary: {"buy_cost_rate": 0.002425, "buy_fee_rate": 0.001425, "sell_cost_rate": 0.005425, "sell_fee_rate": 0.001425, "slippage_rate": 0.001, "transaction_tax_rate": 0.003}
-- engine: fallback_weight_engine
+- engine: vectorbt
+- requested_engine: vectorbt
+- actual_engine: vectorbt
 
 ## Equity Curve / Drawdown Summary
 
-- total_return: -0.24322720916718055
-- max_drawdown: -0.39773815469647567
+- total_return: -0.27756135309168006
+- max_drawdown: -0.4133058057052825
 
 ## Limitations
 

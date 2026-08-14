@@ -33,7 +33,7 @@ def test_fallback_backtest_engine_produces_equity_curve_and_metrics():
     assert {"date", "equity", "returns", "drawdown"}.issubset(results.columns)
     assert "total_return" in metrics.columns
     assert "engine" in metrics.columns
-    assert metrics.loc[0, "engine"] == "fallback_weight_engine"
+    assert metrics.loc[0, "engine"] == "custom"
 
 
 def test_no_rebalance_produces_no_artificial_turnover():

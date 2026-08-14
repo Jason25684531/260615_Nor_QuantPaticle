@@ -14,6 +14,7 @@ from twse_factor_lab.data.fundamental import (
     build_fundamental_matrix,
     build_monthly_revenue_pit,
     build_valuation_pit,
+    classify_response,
     derive_metrics,
     parse_monthly_revenue,
     parse_mops_statement,
@@ -66,6 +67,42 @@ def test_raw_cache_prevents_second_http_request(tmp_path):
     assert session.calls == 1
 
 
+def test_response_classification_rejects_http_200_security_page_and_records_metadata(
+    tmp_path,
+):
+    assert (
+        classify_response(
+            200,
+            "FOR SECURITY REASONS, THIS PAGE CAN NOT BE ACCESSED.",
+            expects_html=True,
+        )
+        == "SECURITY_BLOCK"
+    )
+
+    class Response:
+        status_code = 200
+        encoding = "utf-8"
+        content = b"<html><table><tr><td>ok</td></tr></table></html>"
+
+        def raise_for_status(self):
+            pass
+
+    class Session:
+        def request(self, *_args, **_kwargs):
+            return Response()
+
+    client = FundamentalClient(
+        cache=RawFundamentalCache(tmp_path),
+        twse_base_url="https://example.test",
+        retry=0,
+        session=Session(),
+    )
+    client._request("GET", "https://example.test/source")
+    metadata = next(tmp_path.glob("*.json")).read_text(encoding="utf-8")
+    assert '"classification": "SUCCESS"' in metadata
+    assert '"content_hash"' in metadata
+
+
 def test_valuation_parser_handles_off_market_and_fixture_json():
     assert parse_valuation_daily('{"stat": "NOT FOUND"}', date="2023-05-14").empty
     raw = json.dumps(
@@ -104,8 +141,32 @@ def test_html_fixture_parsers_extract_common_fields():
     assert publication.loc[0, "publication_date"] == pd.Timestamp("2023-05-12")
 
 
+def test_publication_client_treats_official_no_data_page_as_coverage_gap(tmp_path):
+    class Response:
+        status_code = 200
+        encoding = "utf-8"
+        content = "<html><body>查無所需資料</body></html>".encode()
+
+        def raise_for_status(self):
+            pass
+
+    class Session:
+        def request(self, *_args, **_kwargs):
+            return Response()
+
+    client = FundamentalClient(
+        cache=RawFundamentalCache(tmp_path),
+        twse_base_url="https://example.test",
+        retry=0,
+        session=Session(),
+    )
+    assert client.publication_dates("1438", 104).empty
+
+
 def test_financial_and_monthly_pit_use_next_trading_day():
-    calendar = pd.DatetimeIndex(["2023-05-12", "2023-05-15", "2023-05-16"])
+    calendar = pd.DatetimeIndex(
+        ["2023-05-09", "2023-05-12", "2023-05-15", "2023-05-16"]
+    )
     statements = pd.DataFrame(
         {
             "ticker": ["2330", "2330"],
@@ -135,8 +196,39 @@ def test_financial_and_monthly_pit_use_next_trading_day():
     assert monthly.loc[0, "pit_status"] == "PERIOD_ONLY"
 
 
+def test_publication_before_trading_calendar_coverage_is_excluded_not_fabricated():
+    """A 2013 publication_date must not be clamped to a 2018-starting calendar."""
+    calendar = pd.DatetimeIndex(["2018-01-02", "2018-01-03"])
+    statements = pd.DataFrame(
+        {
+            "ticker": ["2330", "2330"],
+            "roc_year": [102, 102],
+            "season": [1, 1],
+            "metric": ["net_income", "equity"],
+            "value": [10.0, 100.0],
+        }
+    )
+    publications = pd.DataFrame(
+        {
+            "ticker": ["2330"],
+            "roc_year": [102],
+            "season": [1],
+            "publication_date": ["2013-05-12"],
+        }
+    )
+    financial = build_financial_pit(statements, publications, trading_days=calendar)
+    assert financial.empty
+    monthly = build_monthly_revenue_pit(
+        pd.DataFrame(
+            {"ticker": ["2330"], "revenue_month": ["2013-04-30"], "revenue": [5.0]}
+        ),
+        trading_days=calendar,
+    )
+    assert monthly.empty
+
+
 def test_missing_financial_publication_can_only_use_explicit_degraded_policy():
-    calendar = pd.DatetimeIndex(["2023-05-16"])
+    calendar = pd.DatetimeIndex(["2023-05-15", "2023-05-16"])
     statements = pd.DataFrame(
         {
             "ticker": ["2330"],
@@ -271,6 +363,50 @@ def test_derived_metrics_and_coverage_use_eligible_denominator():
     assert derived.query("metric == 'roe'").iloc[0]["value"] == 0.1
     coverage = build_fundamental_coverage(derived, _universe())
     assert coverage["eligible_tickers"].eq(1).all()
+
+
+def test_coverage_excludes_tickers_outside_the_d2_universe():
+    rows = _pit(
+        [
+            [
+                "9999",
+                "pe",
+                "2023-05-15",
+                "2023-05-15",
+                "2023-05-15",
+                10.0,
+                "twse_BWIBBU_d",
+                "FULL_PIT",
+            ]
+        ]
+    )
+    coverage = build_fundamental_coverage(rows, _universe())
+    assert (
+        coverage.loc[
+            coverage["metric"].eq("valuation_pit_coverage"), "covered_tickers"
+        ].item()
+        == 0
+    )
+
+
+def test_revenue_yoy_with_zero_prior_year_base_is_excluded_not_raised():
+    months = pd.date_range("2022-01-31", periods=13, freq="ME")
+    rows = [
+        [
+            "2330",
+            "revenue",
+            month,
+            month + pd.Timedelta(days=10),
+            month + pd.Timedelta(days=12),
+            0.0 if index == 0 else 100.0,
+            "mops_t21sc03",
+            "PERIOD_ONLY",
+        ]
+        for index, month in enumerate(months)
+    ]
+    derived = derive_metrics(_pit(rows))
+    yoy = derived.query("metric == 'revenue_yoy'")
+    assert len(yoy) == 0
 
 
 def test_valuation_pit_is_full_pit():

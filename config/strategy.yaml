@@ -41,8 +41,10 @@ twse:
 
 fundamental:
   start_roc_year: 102
+  acceptance_tickers: ["2330"]
   throttle_seconds: 0.5
   retry: 3
+  mops_timeout_seconds: 90
   availability_policy: next_trading_day
   missing_publication_date: exclude
   raw_cache_dir: "data/raw/fundamental"

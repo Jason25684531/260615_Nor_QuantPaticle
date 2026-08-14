@@ -83,6 +83,8 @@ None
 ## Fundamental Coverage
 
 - report: `reports/fundamental_coverage_report.md`
-- live_fundamental_pipeline_status: FAILED (official MOPS balance-sheet timeout)
+- live_fundamental_pipeline_status: PASS
 - artifact policy: `run_fundamental_pipeline.py` preserves existing artifacts
   when a live backfill is incomplete.
+
+

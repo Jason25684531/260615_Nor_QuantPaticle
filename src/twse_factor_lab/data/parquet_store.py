@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pandas as pd
@@ -22,7 +23,15 @@ class ParquetStore:
 
         output_path = Path(path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        frame.to_parquet(output_path, index=include_index)
+        temporary_path = output_path.with_suffix(output_path.suffix + ".tmp")
+        try:
+            frame.to_parquet(temporary_path, index=include_index)
+            read_back = pd.read_parquet(temporary_path)
+            if read_back.empty:
+                raise ValueError("Parquet read-back was empty")
+            os.replace(temporary_path, output_path)
+        finally:
+            temporary_path.unlink(missing_ok=True)
         return output_path
 
     def load(self, path: str | Path) -> pd.DataFrame:

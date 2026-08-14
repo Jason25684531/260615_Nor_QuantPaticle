@@ -2,7 +2,7 @@
 
 ## Run Metadata
 
-- generated_at: 2026-08-11T03:41:36.956775+00:00
+- generated_at: 2026-08-13T07:12:01.534477+00:00
 - config_path: config\strategy.yaml
 - pipeline_name: run_backtest.py
 
