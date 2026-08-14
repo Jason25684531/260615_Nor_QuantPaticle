@@ -66,3 +66,17 @@ def test_volume_ratio_and_factor_frame_keep_date_ticker_shape():
         "low_volatility_20d",
         "volume_ratio_5d_60d",
     } <= set(factor_frame.columns)
+
+
+def test_flat_prices_produce_neutral_rsi_and_finite_zero_variance_zscore():
+    index = pd.date_range("2024-01-01", periods=40, freq="D")
+    prices = pd.DataFrame({"1101": [100.0] * len(index)}, index=index)
+    factors = build_price_volume_factor_frame(
+        close_matrix=prices,
+        high_matrix=prices,
+        low_matrix=prices,
+        volume_matrix=pd.DataFrame({"1101": [10.0] * len(index)}, index=index),
+        config={"rsi_period": 28, "rsi_z_window": 5},
+    )
+    assert factors["rsi_28"].dropna().eq(50.0).all()
+    assert factors["rsi_z"].dropna().eq(0.0).all()

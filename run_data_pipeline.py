@@ -13,6 +13,7 @@ import yaml
 
 from twse_factor_lab.data.manifest import append_manifest_entries, build_manifest_entry
 from twse_factor_lab.data.normalizer import (
+    drop_invalid_ohlcv_rows,
     normalize_ohlcv,
     normalize_universe,
     normalize_valuation,
@@ -372,7 +373,7 @@ def run_pipeline(config_path: str | Path) -> dict[str, Path]:
             "OHLCV download produced no usable rows; existing artifacts were not "
             "overwritten"
         )
-    ohlcv = normalize_ohlcv(download.data)
+    ohlcv = drop_invalid_ohlcv_rows(normalize_ohlcv(download.data))
     validate_ohlcv(ohlcv)
     ohlcv = sort_ohlcv(ohlcv)
     universe_settings = universe_settings_from_config(config)
@@ -405,6 +406,10 @@ def run_pipeline(config_path: str | Path) -> dict[str, Path]:
         "universe_coverage": resolve_path(config_path, paths["universe_coverage"]),
         "data_quality_report": resolve_path(config_path, paths["data_quality_report"]),
         "manifest": resolve_path(config_path, paths["manifest"]),
+        "failed_tickers": resolve_path(
+            config_path,
+            paths.get("failed_tickers", "data/processed/failed_ohlcv_tickers.parquet"),
+        ),
     }
 
     store.save(universe, output_paths["universe"])
@@ -412,6 +417,10 @@ def run_pipeline(config_path: str | Path) -> dict[str, Path]:
     store.save(ohlcv, output_paths["ohlcv"])
     store.save(research_universe, output_paths["research_universe"])
     store.save(universe_coverage, output_paths["universe_coverage"])
+    failed = pd.DataFrame({"ticker": download.failed_tickers})
+    if failed.empty:
+        failed = pd.DataFrame({"ticker": ["NONE"]})
+    store.save(failed, output_paths["failed_tickers"])
 
     report = build_quality_report(
         universe=universe,

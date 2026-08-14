@@ -14,6 +14,7 @@ from twse_factor_lab.data.manifest import append_manifest_entries, build_manifes
 from twse_factor_lab.data.matrix_builder import build_ohlcv_matrices
 from twse_factor_lab.data.parquet_store import ParquetStore
 from twse_factor_lab.factors.composer import build_composite_factor_frame
+from twse_factor_lab.factors.fundamental import build_fundamental_factor_frame
 from twse_factor_lab.factors.price_volume import (
     build_price_volume_factor_frame,
     low_volatility_method,
@@ -183,6 +184,12 @@ def run_factor_pipeline(config_path: str | Path) -> dict[str, Path]:
         "factors_valuation_snapshot": resolve_path(
             config_path, paths["factors_valuation_snapshot"]
         ),
+        "factors_fundamental": resolve_path(
+            config_path,
+            paths.get(
+                "factors_fundamental", "data/processed/factors_fundamental.parquet"
+            ),
+        ),
         "factors_composite": resolve_path(config_path, paths["factors_composite"]),
         "factor_quality_report": resolve_path(
             config_path, paths["factor_quality_report"]
@@ -203,8 +210,18 @@ def run_factor_pipeline(config_path: str | Path) -> dict[str, Path]:
         high_matrix=matrices["high"],
         low_matrix=matrices["low"],
         volume_matrix=matrices["volume"],
+        config=config.get("analysis", {}).get("d3", {}),
     )
     store.save(price_volume_factors, output_paths["factors_price_volume"])
+
+    fundamental_value = paths.get("fundamental_matrix")
+    if fundamental_value:
+        fundamental_path = resolve_path(config_path, fundamental_value)
+        if fundamental_path.exists():
+            fundamental_factors = build_fundamental_factor_frame(
+                store.load(fundamental_path)
+            )
+            store.save(fundamental_factors, output_paths["factors_fundamental"])
 
     as_of_date = pd.Timestamp(valuation["date"].dropna().max())
     if pd.isna(as_of_date):

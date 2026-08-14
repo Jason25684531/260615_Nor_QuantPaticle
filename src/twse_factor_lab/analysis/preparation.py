@@ -49,3 +49,29 @@ def select_historical_factor_matrices(
         factor_name: SNAPSHOT_EXCLUSION_STATUS for factor_name in excluded_snapshot
     }
     return matrices, excluded
+
+
+def normalized_factor_matrices(
+    frames: list[pd.DataFrame], metadata: dict[str, dict[str, str]]
+) -> dict[str, pd.DataFrame]:
+    """Direction-aware percentile exposures; NaNs remain excluded."""
+    merged = frames[0]
+    for frame in frames[1:]:
+        merged = merged.merge(frame, on=["date", "ticker"], how="outer")
+    result: dict[str, pd.DataFrame] = {}
+    for factor, info in metadata.items():
+        if factor not in merged:
+            continue
+        direction = info.get("direction")
+        if direction not in {"higher_is_better", "lower_is_better"}:
+            raise ValueError(f"Ranking factor {factor} has no declared direction")
+        values = merged[["date", "ticker", factor]].copy()
+        values[factor] = values[factor].replace([float("inf"), float("-inf")], pd.NA)
+        values["score"] = values.groupby("date")[factor].rank(pct=True)
+        if direction == "lower_is_better":
+            values["score"] = 1 - values["score"]
+        result[factor] = _long_to_matrix(
+            values[["date", "ticker", "score"]].rename(columns={"score": factor}),
+            factor,
+        )
+    return result

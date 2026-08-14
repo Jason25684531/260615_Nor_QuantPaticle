@@ -5,9 +5,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
 import yaml
 
 from run_data_pipeline import resolve_path
+from twse_factor_lab.analysis.correlation import compute_factor_correlation
 from twse_factor_lab.analysis.forward_returns import build_forward_returns
 from twse_factor_lab.analysis.information_coefficient import (
     compute_information_coefficients,
@@ -16,6 +18,7 @@ from twse_factor_lab.analysis.information_coefficient import (
 from twse_factor_lab.analysis.monotonicity import evaluate_monotonicity
 from twse_factor_lab.analysis.preparation import (
     FACTOR_DIRECTIONS,
+    normalized_factor_matrices,
     select_historical_factor_matrices,
 )
 from twse_factor_lab.analysis.quantile_returns import (
@@ -29,6 +32,7 @@ from twse_factor_lab.data.manifest import (
     build_manifest_entry,
 )
 from twse_factor_lab.data.parquet_store import ParquetStore
+from twse_factor_lab.selection.scoreboard import build_factor_scoreboard
 
 
 def load_config(path: str | Path) -> dict[str, Any]:
@@ -71,6 +75,11 @@ def run_factor_analysis(config_path: str | Path) -> dict[str, Path]:
         "factors_composite": resolve_path(config_path, paths["factors_composite"]),
         "manifest": resolve_path(config_path, paths["manifest"]),
     }
+    fundamental_value = paths.get("factors_fundamental")
+    if fundamental_value:
+        input_paths["factors_fundamental"] = resolve_path(
+            config_path, fundamental_value
+        )
     output_paths = {
         "factor_forward_returns": resolve_path(
             config_path, paths["factor_forward_returns"]
@@ -85,6 +94,20 @@ def run_factor_analysis(config_path: str | Path) -> dict[str, Path]:
             config_path, paths["factor_analysis_report"]
         ),
         "manifest": input_paths["manifest"],
+        "factor_ic_daily": resolve_path(
+            config_path,
+            paths.get("factor_ic_daily", "data/processed/factor_ic_daily.parquet"),
+        ),
+        "factor_correlation": resolve_path(
+            config_path,
+            paths.get(
+                "factor_correlation", "data/processed/factor_correlation.parquet"
+            ),
+        ),
+        "factor_scoreboard": resolve_path(
+            config_path,
+            paths.get("factor_scoreboard", "data/processed/factor_scoreboard.parquet"),
+        ),
     }
 
     close_matrix = store.load(input_paths["close_matrix"])
@@ -98,8 +121,24 @@ def run_factor_analysis(config_path: str | Path) -> dict[str, Path]:
         optional_composites=optional_composites,
         excluded_snapshot=excluded_snapshot,
     )
+    ranking_metadata = factor_config.get("ranking", {})
+    d3_frames = [price_volume_factors]
+    if (
+        "factors_fundamental" in input_paths
+        and input_paths["factors_fundamental"].exists()
+    ):
+        d3_frames.append(store.load(input_paths["factors_fundamental"]))
+    normalized = (
+        normalized_factor_matrices(d3_frames, ranking_metadata)
+        if ranking_metadata
+        else {}
+    )
+    factor_matrices.update(normalized)
     directions = {
-        factor_name: FACTOR_DIRECTIONS[factor_name] for factor_name in factor_matrices
+        factor_name: "higher_is_better"
+        if factor_name in normalized
+        else FACTOR_DIRECTIONS[factor_name]
+        for factor_name in factor_matrices
     }
 
     forward_returns = build_forward_returns(close_matrix, horizons=horizons)
@@ -119,9 +158,35 @@ def run_factor_analysis(config_path: str | Path) -> dict[str, Path]:
 
     store.save(forward_returns, output_paths["factor_forward_returns"])
     store.save(ic_summary, output_paths["factor_ic_summary"])
+    store.save(ic_results, output_paths["factor_ic_daily"])
     store.save(quantile_returns, output_paths["factor_quantile_returns"])
     store.save(turnover_summary, output_paths["factor_turnover"])
     store.save(monotonicity, output_paths["factor_monotonicity"])
+    correlation = compute_factor_correlation(
+        normalized,
+        int(analysis_config.get("d3", {}).get("correlation_min_samples", 30)),
+    )
+    if correlation.empty:
+        correlation = pd.DataFrame(
+            {
+                "factor_a": ["NONE"],
+                "factor_b": ["NONE"],
+                "correlation": [float("nan")],
+                "sample_count": [0],
+                "status": ["UNKNOWN"],
+            }
+        )
+    store.save(correlation, output_paths["factor_correlation"])
+    scoreboard = build_factor_scoreboard(
+        ic_summary=ic_summary,
+        quantile_returns=quantile_returns,
+        turnover=turnover_summary,
+        monotonicity=monotonicity,
+        metadata=ranking_metadata,
+        thresholds=analysis_config.get("d3", {}).get("scoreboard", {}),
+        correlation=correlation,
+    )
+    store.save(scoreboard, output_paths["factor_scoreboard"])
 
     report = build_factor_analysis_report(
         config_path=config_path,

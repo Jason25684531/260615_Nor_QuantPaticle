@@ -123,3 +123,14 @@ def normalize_ohlcv(raw: pd.DataFrame) -> pd.DataFrame:
     return result[
         ["date", "ticker", "open", "high", "low", "close", "volume"]
     ].reset_index(drop=True)
+
+
+def drop_invalid_ohlcv_rows(frame: pd.DataFrame) -> pd.DataFrame:
+    """Discard source rows that contradict immutable OHLC bounds."""
+    complete = frame[["open", "high", "low", "close"]].notna().all(axis=1)
+    valid = (
+        (frame["close"] > 0)
+        & (frame["high"] >= frame[["open", "low", "close"]].max(axis=1))
+        & (frame["low"] <= frame[["open", "close"]].min(axis=1))
+    )
+    return frame[~complete | valid].reset_index(drop=True)

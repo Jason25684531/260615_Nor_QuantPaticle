@@ -119,3 +119,108 @@ def build_composite_factor_frame(
         .sort_values(["date", "ticker", "composite_type"])
         .reset_index(drop=True)
     )
+
+
+def _factor_matrix(
+    factor: str,
+    *,
+    price_volume_factors: pd.DataFrame,
+    composite_factors: pd.DataFrame,
+) -> pd.DataFrame:
+    if factor == "historical_price_volume":
+        frame = composite_factors[
+            composite_factors["composite_type"] == "historical_price_volume"
+        ]
+        return _long_to_matrix(frame, "composite_score")
+    return _long_to_matrix(price_volume_factors, factor)
+
+
+def build_d35_composite(
+    *,
+    price_volume_factors: pd.DataFrame,
+    composite_factors: pd.DataFrame,
+    research_universe: pd.DataFrame,
+    weights: pd.DataFrame,
+    directions: dict[str, str],
+    min_valid_factor_count: int,
+) -> pd.DataFrame:
+    """D3.5 composite: direction-aware rank -> fixed weight -> valid-only renormalize.
+
+    Missing factors are never filled with 0; below min_valid_factor_count the
+    composite is NaN and the ticker is excluded that day. Restricted to the D2
+    research universe (is_eligible == True) at date T.
+    """
+    selected = weights[weights["selected"].astype(bool)]
+    if selected.empty:
+        raise ValueError("No factors selected for D3.5 composite (redundancy rule)")
+
+    matrices = {
+        factor: _factor_matrix(
+            factor,
+            price_volume_factors=price_volume_factors,
+            composite_factors=composite_factors,
+        )
+        for factor in selected["factor"]
+    }
+    all_dates = sorted(set().union(*(matrix.index for matrix in matrices.values())))
+    all_tickers = sorted(set().union(*(matrix.columns for matrix in matrices.values())))
+
+    weight_map = dict(zip(selected["factor"], selected["weight"], strict=True))
+    weighted_sum: pd.DataFrame | None = None
+    weight_sum: pd.DataFrame | None = None
+    valid_count: pd.DataFrame | None = None
+    contributions: dict[str, pd.DataFrame] = {}
+    for factor, matrix in matrices.items():
+        matrix = matrix.reindex(index=all_dates, columns=all_tickers)
+        ranked = rank_factor(matrix, direction=directions[factor])
+        weight = weight_map[factor]
+        valid = ranked.notna()
+        contribution = (ranked * weight).where(valid)
+        contributions[factor] = contribution
+        weighted_sum = (
+            contribution.fillna(0.0)
+            if weighted_sum is None
+            else weighted_sum.add(contribution.fillna(0.0))
+        )
+        weight_contribution = valid.astype(float) * weight
+        weight_sum = (
+            weight_contribution
+            if weight_sum is None
+            else weight_sum.add(weight_contribution)
+        )
+        valid_count = (
+            valid.astype(int) if valid_count is None else valid_count.add(valid.astype(int))
+        )
+
+    composite = weighted_sum / weight_sum.where(weight_sum > 0)
+    composite = composite.where(valid_count >= min_valid_factor_count)
+
+    eligible = (
+        research_universe.pivot(index="date", columns="ticker", values="is_eligible")
+        .reindex(index=all_dates, columns=all_tickers)
+        .fillna(False)
+    )
+    composite = composite.where(eligible)
+
+    def _to_long(matrix: pd.DataFrame, name: str) -> pd.DataFrame:
+        long_frame = matrix.stack(future_stack=True).rename(name).reset_index()
+        long_frame.columns = ["date", "ticker", name]
+        return long_frame
+
+    merged = _to_long(composite, "composite_score")
+    for name, matrix in (
+        ("valid_factor_count", valid_count),
+        ("factor_weight_sum", weight_sum),
+        ("universe_eligible", eligible),
+    ):
+        merged = merged.merge(_to_long(matrix, name), on=["date", "ticker"])
+    for factor, contribution in contributions.items():
+        merged = merged.merge(
+            _to_long(contribution, f"contrib_{factor}"),
+            on=["date", "ticker"],
+            how="left",
+        )
+
+    merged["composite_type"] = "d35_composite"
+    merged["is_snapshot_component_used"] = False
+    return merged.sort_values(["date", "ticker"]).reset_index(drop=True)

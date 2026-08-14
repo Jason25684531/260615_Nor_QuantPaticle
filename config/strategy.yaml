@@ -7,10 +7,10 @@ data:
   start_date: "2018-01-01"
   end_date: "2025-12-31"
   cache_format: "parquet"
-  ohlcv_ticker_limit: 100
+  ohlcv_ticker_limit: null
   ohlcv:
     # Ingestion/runtime bound only; it never defines research-universe eligibility.
-    ticker_limit: 100
+    ticker_limit: null
     batch_size: 20
     retry: 3
     sleep_seconds: 1
@@ -66,6 +66,7 @@ paths:
   low_matrix: "data/processed/low_matrix.parquet"
   volume_matrix: "data/processed/volume_matrix.parquet"
   factors_price_volume: "data/processed/factors_price_volume.parquet"
+  factors_fundamental: "data/processed/factors_fundamental.parquet"
   factors_valuation_snapshot: "data/processed/factors_valuation_snapshot.parquet"
   factors_composite: "data/processed/factors_composite.parquet"
   factor_quality_report: "reports/factor_quality_summary.md"
@@ -76,6 +77,11 @@ paths:
   factor_monotonicity: "data/processed/factor_monotonicity.parquet"
   factor_analysis_report: "reports/factor_analysis_report.md"
   factor_scoreboard: "data/processed/factor_scoreboard.parquet"
+  factor_ic_daily: "data/processed/factor_ic_daily.parquet"
+  factor_correlation: "data/processed/factor_correlation.parquet"
+  failed_tickers: "data/processed/failed_ohlcv_tickers.parquet"
+  factor_tearsheet_dir: "reports/factors"
+  factor_research_summary: "reports/factor_research_summary.md"
   selected_factor_scores: "data/processed/selected_factor_scores.parquet"
   topn_positions: "data/processed/topn_positions.parquet"
   portfolio_weights: "data/processed/portfolio_weights.parquet"
@@ -89,6 +95,13 @@ paths:
   valuation_daily: "data/processed/valuation_daily.parquet"
   fundamental_coverage: "data/processed/fundamental_coverage.parquet"
   fundamental_coverage_report: "reports/fundamental_coverage_report.md"
+  composite_factor_weights: "data/processed/composite_factor_weights.parquet"
+  composite_scores: "data/processed/composite_scores.parquet"
+  market_breadth: "data/processed/market_breadth.parquet"
+  portfolio_targets: "data/processed/portfolio_targets.parquet"
+  portfolio_scenarios: "data/processed/portfolio_scenarios.parquet"
+  market_breadth_report: "reports/market_breadth_report.md"
+  d35_strategy_report: "reports/d35_strategy_report.md"
 
 week2:
   manifest_schema_version: "1.0.0"
@@ -108,6 +121,52 @@ analysis:
       - pe_inverse
       - dividend_yield
       - latest_snapshot_mixed
+    ranking:
+      rsi_z: {direction: higher_is_better, family: TECHNICAL}
+      momentum_40d: {direction: higher_is_better, family: TECHNICAL}
+      risk_adjusted_momentum: {direction: higher_is_better, family: TECHNICAL}
+      obv_z90: {direction: higher_is_better, family: TECHNICAL}
+      natr_14: {direction: lower_is_better, family: TECHNICAL}
+      revenue_yoy: {direction: higher_is_better, family: FUNDAMENTAL}
+      eps: {direction: higher_is_better, family: FUNDAMENTAL}
+      roe: {direction: higher_is_better, family: FUNDAMENTAL}
+      pe: {direction: lower_is_better, family: FUNDAMENTAL}
+      pb: {direction: lower_is_better, family: FUNDAMENTAL}
+      dividend_yield: {direction: higher_is_better, family: FUNDAMENTAL}
+  d3:
+    rsi_period: 28
+    rsi_z_window: 90
+    momentum_period: 40
+    atr_period: 14
+    obv_z_window: 90
+    ma_short: 60
+    ma_long: 120
+    correlation_min_samples: 30
+    scoreboard: {min_coverage: 0.2, min_ic_observations: 20, min_abs_ir: 0.02, correlation_warning: 0.8}
+
+composite35:
+  # Canonical D3 archived candidate pool (multi-factor-research-v1). Selection
+  # must never expand beyond this list without a new research cycle.
+  canonical_pool:
+    - historical_price_volume
+    - momentum_40d
+    - momentum_60d
+    - obv_z90
+    - risk_adjusted_momentum
+    - rsi_z
+    - volume_ratio_5d_60d
+  family:
+    MOMENTUM: [momentum_40d, momentum_60d, risk_adjusted_momentum]
+    PRICE_VOLUME: [historical_price_volume, obv_z90, volume_ratio_5d_60d]
+    OSCILLATOR: [rsi_z]
+  correlation_cap: 0.8
+  min_valid_factor_count: 2
+
+breadth:
+  ma_column: ma_60
+  threshold: 0.40
+  exposure_high: 1.0
+  exposure_low: 0.5
 
 backtest:
   enabled: true

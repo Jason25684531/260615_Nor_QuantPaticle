@@ -29,6 +29,11 @@ SCOREBOARD_COLUMNS = [
     "is_historical_ready",
     "is_backtest_candidate",
     "notes",
+    "factor_family",
+    "coverage",
+    "correlation_warning",
+    "pit_ready",
+    "status",
 ]
 
 
@@ -59,7 +64,11 @@ def build_factor_scoreboard(
     turnover: pd.DataFrame,
     monotonicity: pd.DataFrame,
     ohlcv_ticker_count: int | None = None,
+    metadata: dict[str, dict[str, str]] | None = None,
+    thresholds: dict[str, float] | None = None,
+    correlation: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
+    metadata, thresholds = metadata or {}, thresholds or {}
     best = _best_ic_rows(ic_summary)
     spreads = _top_bottom_spreads(quantile_returns)
     factors = (
@@ -92,6 +101,44 @@ def build_factor_scoreboard(
         if ohlcv_ticker_count is not None:
             notes.append(f"limited OHLCV coverage: {ohlcv_ticker_count} tickers")
 
+        high_correlation = False
+        if correlation is not None and not correlation.empty:
+            pairs = correlation[
+                (correlation["factor_a"] == factor)
+                | (correlation["factor_b"] == factor)
+            ]
+            high_correlation = bool(
+                pairs["correlation"]
+                .abs()
+                .ge(float(thresholds.get("correlation_warning", 0.8)))
+                .any()
+            )
+        insufficient = best_row.empty or (
+            "valid_date_count" in best_row
+            and int(best_row.iloc[0]["valid_date_count"])
+            < int(thresholds.get("min_ic_observations", 1))
+        )
+        ir = (
+            float(best_row.iloc[0]["ir"])
+            if not best_row.empty and pd.notna(best_row.iloc[0]["ir"])
+            else 0.0
+        )
+        spread = (
+            float(spread_row.iloc[0]["top_bottom_spread"])
+            if not spread_row.empty
+            else 0.0
+        )
+        status = (
+            "INSUFFICIENT_DATA"
+            if insufficient
+            else "REJECT"
+            if ir <= 0 or spread <= 0
+            else "CANDIDATE"
+            if abs(ir) >= float(thresholds.get("min_abs_ir", 0))
+            and not monotonicity_row.empty
+            and bool(monotonicity_row.iloc[0]["monotonicity_pass"])
+            else "WEAK"
+        )
         rows.append(
             {
                 "factor": factor,
@@ -127,6 +174,14 @@ def build_factor_scoreboard(
                 "is_backtest_candidate": is_historical
                 and factor not in SNAPSHOT_FACTORS,
                 "notes": "; ".join(notes),
+                "factor_family": metadata.get(factor, {}).get("family", "TECHNICAL"),
+                "coverage": int(best_row.iloc[0]["valid_date_count"])
+                if not best_row.empty and "valid_date_count" in best_row
+                else 0,
+                "correlation_warning": high_correlation,
+                "pit_ready": metadata.get(factor, {}).get("family") != "FUNDAMENTAL"
+                or not best_row.empty,
+                "status": status,
             }
         )
     return pd.DataFrame(rows, columns=SCOREBOARD_COLUMNS)

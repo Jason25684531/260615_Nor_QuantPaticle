@@ -22,28 +22,21 @@ def compute_information_coefficients(
             if len(common_dates) == 0 or len(common_tickers) == 0:
                 continue
 
-            for date in common_dates:
-                factor_row = factor_matrix.loc[date, common_tickers]
-                return_row = return_matrix.loc[date, common_tickers]
-                aligned = pd.concat(
-                    [factor_row.rename("factor"), return_row.rename("forward_return")],
-                    axis=1,
-                ).dropna()
-                if len(aligned) < 2:
-                    continue
-                ranked = aligned.rank(method="average")
-                ic = ranked["factor"].corr(ranked["forward_return"], method="pearson")
-                if pd.isna(ic):
-                    continue
-                rows.append(
-                    {
-                        "factor": factor_name,
-                        "horizon": int(horizon),
-                        "date": pd.Timestamp(date),
-                        "ic": float(ic),
-                        "asset_count": int(len(aligned)),
-                    }
-                )
+            factors = factor_matrix.loc[common_dates, common_tickers]
+            returns = return_matrix.loc[common_dates, common_tickers]
+            counts = (factors.notna() & returns.notna()).sum(axis=1)
+            ics = factors.rank(axis=1).corrwith(returns.rank(axis=1), axis=1)
+            for date, ic in ics.dropna().items():
+                if counts.loc[date] >= 2:
+                    rows.append(
+                        {
+                            "factor": factor_name,
+                            "horizon": int(horizon),
+                            "date": pd.Timestamp(date),
+                            "ic": float(ic),
+                            "asset_count": int(counts.loc[date]),
+                        }
+                    )
 
     if not rows:
         return pd.DataFrame(columns=["factor", "horizon", "date", "ic", "asset_count"])
