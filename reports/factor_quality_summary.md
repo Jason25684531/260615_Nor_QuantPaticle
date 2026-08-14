@@ -1,6 +1,6 @@
 # Factor Quality Summary
 
-Generated at: 2026-08-11T03:40:52.040731+00:00
+Generated at: 2026-08-14T09:49:10.340980+00:00
 
 ## Input Parquet Paths
 
@@ -10,40 +10,40 @@ Generated at: 2026-08-11T03:40:52.040731+00:00
 
 ## Artifact Shapes
 
-- close_matrix: (1943, 100)
-- high_matrix: (1943, 100)
-- low_matrix: (1943, 100)
-- volume_matrix: (1943, 100)
-- factors_price_volume: (194300, 5)
+- close_matrix: (1943, 1092)
+- high_matrix: (1943, 1092)
+- low_matrix: (1943, 1092)
+- volume_matrix: (1943, 1092)
+- factors_price_volume: (2121756, 16)
 - factors_valuation_snapshot: (1083, 7)
-- factors_composite: (194400, 5)
+- factors_composite: (2122848, 5)
 
 ## Factor Coverage
 
-- universe_ticker_count: 1094
+- universe_ticker_count: 1095
 - price_volume_date_range: 2018-01-02 to 2025-12-31
 - valuation_ticker_count: 1083
-- price_volume_missing_ratio: 0.0166
-- valuation_missing_ratio: 0.2049
-- composite_missing_ratio: 0.0027
+- price_volume_missing_ratio: 0.1191
+- valuation_missing_ratio: 0.2020
+- composite_missing_ratio: 0.0191
 
 ## Composite Row Breakdown
 
-- factors_composite_total_rows: 194400
-- historical_price_volume_rows: 194300
-- latest_snapshot_mixed_rows: 100
+- factors_composite_total_rows: 2122848
+- historical_price_volume_rows: 2121756
+- latest_snapshot_mixed_rows: 1092
 
 ## Composite Semantics
 
 historical_price_volume_composite:
-rows: 194300
+rows: 2121756
 date_range: 2018-01-02 to 2025-12-31
 is_snapshot_component_used: false
 historical_backtest_ready: true
 
 latest_snapshot_mixed_composite:
-rows: 100
-as_of_date: 2026-08-11 to 2026-08-11
+rows: 1092
+as_of_date: 2026-08-14 to 2026-08-14
 is_snapshot_component_used: true
 historical_backtest_ready: false
 
@@ -69,7 +69,7 @@ latest_snapshot_mixed_composite: not_historical_ready
 ## Validation
 
 - alignment_is_aligned: True
-- alignment_missing_ratio: 0.0039
+- alignment_missing_ratio: 0.0855
 - alphalens_ready: True
 
 ## Valuation Snapshot Limitation

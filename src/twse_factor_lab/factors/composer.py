@@ -188,9 +188,8 @@ def build_d35_composite(
             if weight_sum is None
             else weight_sum.add(weight_contribution)
         )
-        valid_count = (
-            valid.astype(int) if valid_count is None else valid_count.add(valid.astype(int))
-        )
+        valid_int = valid.astype(int)
+        valid_count = valid_int if valid_count is None else valid_count.add(valid_int)
 
     composite = weighted_sum / weight_sum.where(weight_sum > 0)
     composite = composite.where(valid_count >= min_valid_factor_count)
