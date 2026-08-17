@@ -213,3 +213,21 @@ backtest:
   vectorbt:
     use_vectorbt: true
     allow_fallback: true
+
+robustness:
+  top_n: {values: [10, 20, 30]}
+  buffer: {values: [20, 30, 40]}
+  breadth_threshold: {values: [0.35, 0.40, 0.45]}
+  rebalance: {values: [daily, weekly, monthly]}
+  cost_multiplier: {values: [0.0, 0.5, 1.0, 2.0]}
+  is_oos:
+    rule: chronological_70_30
+    is_fraction: 0.70
+    oos_initial_capital: canonical
+  regression:
+    hac_lags: automatic  # floor(4 * (T / 100) ** (2 / 9))
+  verdict:
+    stable_sharpe_ratio: 0.7
+    degraded_sharpe_ratio: 0.3
+    stable_max_drawdown_multiple: 1.5
+    minimum_observations: 252

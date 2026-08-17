@@ -97,31 +97,38 @@ def _custom_backtest(
     weights: pd.DataFrame,
     cost_model: CostModel,
     initial_cash: float,
-) -> tuple[pd.DataFrame, pd.Series, pd.Series]:
+) -> tuple[pd.DataFrame, pd.Series, pd.Series, pd.DataFrame]:
+    """Execute canonical orders: stale marks, but no order without Close."""
+    mark_prices = close.ffill()
     changes = weights.diff().fillna(weights)
     buy_turnover = changes.clip(lower=0.0).sum(axis=1)
     sell_turnover = -changes.clip(upper=0.0).sum(axis=1)
     shares = pd.Series(0.0, index=close.columns)
     cash = float(initial_cash)
     rows: list[dict[str, float | pd.Timestamp]] = []
+    order_sizes = pd.DataFrame(0.0, index=close.index, columns=close.columns)
     previous_equity = float(initial_cash)
-    for date, prices in close.iterrows():
+    for date, raw_prices in close.iterrows():
+        prices = mark_prices.loc[date]
         pre_trade_equity = float(cash + (shares * prices).sum())
         target = weights.loc[date]
         if changes.loc[date].ne(0).any():
+            tradable = raw_prices.notna()
             desired = target * pre_trade_equity
             values = shares * prices
-            sells = (values - desired).clip(lower=0.0)
+            sells = (values - desired).clip(lower=0.0).where(tradable, 0.0)
             cash += float((sells * (1 - cost_model.sell_cost_rate)).sum())
             shares -= sells / prices
+            order_sizes.loc[date] -= sells / prices
             values = shares * prices
-            buys = (desired - values).clip(lower=0.0)
+            buys = (desired - values).clip(lower=0.0).where(tradable, 0.0)
             total_buy = float((buys * (1 + cost_model.buy_cost_rate)).sum())
             if total_buy > cash and total_buy:
                 buys *= cash / total_buy
                 total_buy = cash
             cash -= total_buy
             shares += buys / prices
+            order_sizes.loc[date] += buys / prices
         equity = float(cash + (shares * prices).sum())
         gross_return = pre_trade_equity / previous_equity - 1.0
         net_return = equity / previous_equity - 1.0
@@ -147,32 +154,33 @@ def _custom_backtest(
     results = pd.DataFrame(rows)
     results["drawdown"] = _drawdown(results["equity"])
     returns = pd.Series(results["returns"].to_numpy(), index=close.index)
-    return results, returns, buy_turnover + sell_turnover
+    return results, returns, buy_turnover + sell_turnover, order_sizes
 
 
 def _vectorbt_backtest(
     close: pd.DataFrame,
     weights: pd.DataFrame,
     events: pd.DataFrame,
+    order_sizes: pd.DataFrame,
     cost_model: CostModel,
     initial_cash: float,
 ) -> tuple[pd.DataFrame, pd.Series, pd.Series, dict[str, pd.DataFrame]]:
     import vectorbt as vbt
 
-    previous = weights.shift(1).fillna(0.0)
-    fees = pd.DataFrame(np.nan, index=close.index, columns=close.columns)
-    event_mask = events.notna()
-    fees[event_mask & (weights >= previous)] = cost_model.buy_fee_rate
-    fees[event_mask & (weights < previous)] = (
+    fees = pd.DataFrame(0.0, index=close.index, columns=close.columns)
+    event_mask = order_sizes.ne(0)
+    fees[event_mask & (order_sizes >= 0)] = cost_model.buy_fee_rate
+    fees[event_mask & (order_sizes < 0)] = (
         cost_model.sell_fee_rate + cost_model.transaction_tax_rate
     )
-    slippage = pd.DataFrame(np.nan, index=close.index, columns=close.columns)
+    slippage = pd.DataFrame(0.0, index=close.index, columns=close.columns)
     slippage[event_mask] = cost_model.slippage_rate
     portfolio = vbt.Portfolio.from_orders(
-        close,
-        size=events,
-        size_type="targetpercent",
+        close.ffill(),
+        size=order_sizes,
+        size_type="amount",
         direction="longonly",
+        price=close,
         call_seq="auto",
         fees=fees,
         slippage=slippage,
@@ -231,10 +239,14 @@ def run_weight_backtest(
     try:
         if not use_vectorbt:
             raise ImportError("vectorbt was not requested")
+        custom_results, custom_returns, custom_turnover, order_sizes = _custom_backtest(
+            close, weights, cost_model, initial_cash
+        )
         results, returns, turnover, artifacts = _vectorbt_backtest(
             close,
             weights,
             _event_matrix(portfolio_weights, close.index, close.columns),
+            order_sizes,
             cost_model,
             initial_cash,
         )
@@ -249,7 +261,7 @@ def run_weight_backtest(
     except Exception:
         if use_vectorbt and not allow_fallback:
             raise
-        results, returns, turnover = _custom_backtest(
+        results, returns, turnover, _ = _custom_backtest(
             close, weights, cost_model, initial_cash
         )
         actual_engine = "fallback_custom" if use_vectorbt else "custom"

@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "stage": "D3.5",
+  "strategy": "C_composite_buffer_breadth",
+  "selected_factors": ["risk_adjusted_momentum", "historical_price_volume"],
+  "factor_weights": {"risk_adjusted_momentum": 0.5, "historical_price_volume": 0.5},
+  "top_n": 20,
+  "buffer": {"hold_until_drop": true, "drop_rank_buffer": 30},
+  "rebalance": "daily",
+  "breadth": {"threshold": 0.4, "exposure_high": 1.0, "exposure_low": 0.5},
+  "universe_status": "PARTIAL",
+  "cost_model": {"buy_fee_rate": 0.001425, "sell_fee_rate": 0.001425, "transaction_tax_rate": 0.003, "slippage_rate": 0.001},
+  "date_range": {"start": "2018-01-02", "end": "2025-12-31"},
+  "git_commit": "811f78b8b6c39f48359b1890b351628d005ee5a2",
+  "artifact_hashes": {"composite_factor_weights": "821E9301F202B0F0177B67503F27A6C216165E1FD7C4EC24184D46FB0112CF97", "composite_scores": "A61F820F45582B8DE2139EE4A2389D35777CB3F459E4C7C567F87DF68FA8637A", "market_breadth": "946B8A9C7BB57BE51D362CB282C406E81F1C052F773FEC537B99943AA6D0A3A8", "portfolio_targets": "AA68BF7359939BE986BDE92EF11C82FD38A84CD6F448971773263125E71B674D", "portfolio_scenarios": "23153AF827CD1291CF2467C91A31B5805A076DDF148622105BEA2CB7440BD248", "backtest_results": "197CFE29652FEB8CF174B435F930238669CB62FF7D04CFC1844EE21645A21609", "engine_comparison": "BCC5181504FD8CCFAFE1B0F44FAB2CC7E2ED76CBEFD5A19119B165B61DD51EF3"}
+}
