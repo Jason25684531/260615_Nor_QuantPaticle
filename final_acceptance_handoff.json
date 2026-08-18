@@ -1,0 +1,65 @@
+{
+  "strategy_freeze_id": "811f78b8b6c39f48359b1890b351628d005ee5a2",
+  "d4_handoff_id": "811f78b8b6c39f48359b1890b351628d005ee5a2",
+  "is_range": [
+    "2018-01-02",
+    "2023-08-09"
+  ],
+  "oos_range": [
+    "2023-08-10",
+    "2025-12-31"
+  ],
+  "effective_trials": 17,
+  "oos_metrics": {
+    "total_return": -0.0017116245522864615,
+    "cagr": -0.0007402043798883096,
+    "volatility": 0.1948597605800033,
+    "sharpe": -0.0037986517980165787,
+    "sortino": -0.006072141786767699,
+    "calmar": -0.0018373816266175045,
+    "max_drawdown": -0.4028582680730164,
+    "turnover": 0.2641509433962264,
+    "avg_exposure": 0.9313893653516297,
+    "sessions": 583,
+    "oos_start": "2023-08-10",
+    "oos_end": "2025-12-31"
+  },
+  "psr": 0.4976969765755215,
+  "dsr": 0.4976969765755215,
+  "sr0_daily": 6.252071605433166e-20,
+  "mae_mfe": {
+    "trade_count": 5973,
+    "mae_mean": -0.02046384598536083,
+    "mfe_mean": 0.05619849945441921
+  },
+  "d4_robustness_verdict": "REJECT",
+  "strategy_acceptance": "REJECTED",
+  "research_platform_acceptance": "PARTIAL",
+  "limitations": [
+    "PARTIAL TWSE universe",
+    "survivorship bias",
+    "external data gaps",
+    "fundamental coverage",
+    "cost assumptions",
+    "execution price assumptions",
+    "PARTIAL-universe breadth",
+    "benchmark/attribution limits",
+    "Pyfolio transactions unavailable"
+  ],
+  "git_commit": "a8f55292b6b89388a6cca1e9f2fece93824a8c27",
+  "artifact_hashes": {
+    "research_trial_inventory.parquet": "8856ea4433c429051d413be7aff8446df6179dd33157bd8a88c8a55f1583f173",
+    "statistical_acceptance.parquet": "8ccdf9c6e2c4cc856a96aaca7b7e0735b64dee4f4f1a1a21109fca9006ec0c0d",
+    "trade_excursions.parquet": "e9dd009c53e16e15d5f86dffae5b39a6488f9d93359fb4570762bfe60c3d7da7",
+    "reports\\final\\final_acceptance_matrix.md": "f3e1a4948c0a5aaf316611bcb50efa30b209500aa42cf038063401b1dba14d56",
+    "reports\\final\\data_integrity_summary.md": "327bbab7af505f6459cd2d3f382987eacee1eb08bf6e20807a3d909234141de8",
+    "reports\\final\\pit_summary.md": "ea604c3cdfa9669a3bb7ad6e75261ddc8404f2c260450d597f69d3205edbd3ad",
+    "reports\\final\\factor_research_summary.md": "c3b46a9938a0214d2292aef5e393abdfa43966c49f76530b73c93e16f7dde38f",
+    "reports\\final\\composite_breadth_summary.md": "bebaf6b67d97690238f7d2dc68e67cc1c80de682981f11cfb2ff7cf2c24e8412",
+    "reports\\final\\backtest_validation_summary.md": "3778d780ca78b10e54cd8789d5e45962b113e4c9059ff35022df766f116b1fa4",
+    "reports\\final\\robustness_summary.md": "766f8d01ea5c08a000e0b95c0de509c03da993373c2d5b19583c9be906658ed7",
+    "reports\\final\\statistical_acceptance_summary.md": "b0c2c33186baea0222d148a724d315a00ca053b86e0c5f268b3ba8f98ab0f104",
+    "reports\\final\\known_limitations.md": "4272d6fd30ff661b9989c4268846d0280f4f8323d4140b7a8aec87c441f4ca7e",
+    "reports\\final\\final_research_report.md": "41282c4aeb2f87a79988b68cd0ab09098143ca4c6d2aa33e01beca3761ad0be9"
+  }
+}

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-import yaㄋml
+import yaml
 
 from run_data_pipeline import resolve_path
 from twse_factor_lab.backtest.costs import CostModel
