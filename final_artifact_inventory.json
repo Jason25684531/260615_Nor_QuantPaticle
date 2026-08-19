@@ -1,0 +1,27 @@
+{
+  "inventory_version": "1.0",
+  "generated_at": "2026-08-18",
+  "canonical_policy": "Root machine-readable D5 evidence is canonical; human-readable reports are canonical under reports/final/. Large generated parquet remains uncommitted according to artifact policy.",
+  "artifact_decisions": {
+    "source_and_governance": "version_control",
+    "small_manifests": "version_control",
+    "large_parquet": "retain as frozen local evidence; do not commit merely for RC1",
+    "duplicate_reports": "reports/final/ is canonical report location; root data files remain canonical machine-readable inputs"
+  },
+  "artifacts": [
+    {"name":"strategy_freeze_manifest","path":"strategy_freeze_manifest.json","stage":"D3.5","type":"json","exists":true,"size":1363,"schema_status":"PASS","date_range_status":"PASS","sha256":"dc08b81ac2748d0522c52f5a9f4d3dc68dc2a3307063559a3a5bbc41859182d4","canonical":true,"notes":"frozen parameters and hash manifest"},
+    {"name":"d4_handoff","path":"d4_acceptance_handoff.json","stage":"D4","type":"json","exists":true,"size":37034,"schema_status":"PASS","date_range_status":"PASS","sha256":"056896669819e08b6863dfc3e57746461f58ca85f771cd97ebe2e92341525d40","canonical":true,"notes":"D4 verdict REJECT"},
+    {"name":"d5_handoff","path":"final_acceptance_handoff.json","stage":"D5","type":"json","exists":true,"size":2991,"schema_status":"PASS","date_range_status":"PASS","sha256":"522e94775ff73a28dbc45dfca3df9f455ba18ccc42e4bd31170307dfbf901ba7","canonical":true,"notes":"D5 strategy REJECTED, platform PARTIAL"},
+    {"name":"factor_weights","path":"data/processed/composite_factor_weights.parquet","stage":"D3.5","type":"parquet","exists":true,"size":4762,"schema_status":"PASS","date_range_status":"PASS","sha256":"821e9301f202b0f0177b67503f27a6c216165e1fd7c4ec24184d46fb0112cf97","canonical":true,"notes":"weights 0.5/0.5"},
+    {"name":"composite_scores","path":"data/processed/composite_scores.parquet","stage":"D3.5","type":"parquet","exists":true,"size":16261866,"schema_status":"PASS","date_range_status":"PASS","sha256":"a61f820f45582b8de2139ee4a2389d35777cb3f459e4c7c567f87df68fa8637a","canonical":true,"notes":"large generated parquet; not committed merely for RC1"},
+    {"name":"market_breadth","path":"data/processed/market_breadth.parquet","stage":"D3.5","type":"parquet","exists":true,"size":41733,"schema_status":"PASS","date_range_status":"PASS","sha256":"946b8a9c7bb57be51d362cb282c406e81f1c052f773fec537b99943aa6d0a3a8","canonical":true,"notes":"breadth threshold 0.40"},
+    {"name":"portfolio_targets","path":"data/processed/portfolio_targets.parquet","stage":"D3.5","type":"parquet","exists":true,"size":179067,"schema_status":"PASS","date_range_status":"PASS","sha256":"aa68bf7359939be986bde92ef11c82fd38a84cd6f448971773263125e71b674d","canonical":true,"notes":"large generated parquet"},
+    {"name":"backtest_results","path":"data/processed/backtest_results.parquet","stage":"D3.5","type":"parquet","exists":true,"size":1111957,"schema_status":"PASS","date_range_status":"PASS","sha256":"197cfe29652feb8cf174b435f930238669cb62ff7d04cfc1844ee21645a21609","canonical":true,"notes":"frozen OOS input"},
+    {"name":"engine_comparison","path":"data/processed/backtest_engine_comparison.parquet","stage":"D3.5","type":"parquet","exists":true,"size":3651,"schema_status":"PASS","date_range_status":"PASS","sha256":"bcc5181504fd8ccfafe1b0f44fab2cc7e2ed76cbefd5a19119b165b61dd51ef3","canonical":true,"notes":"Custom/Vectorbt comparison"},
+    {"name":"robustness_scoreboard","path":"data/processed/robustness_scoreboard.parquet","stage":"D4","type":"parquet","exists":true,"size":20696,"schema_status":"PASS","date_range_status":"PASS","sha256":"9e48e81f288f93c1470ce8939c28dd376eb8de77897746b05d50f0ca0267445f","canonical":true,"notes":"69 configurations"},
+    {"name":"trial_inventory","path":"research_trial_inventory.parquet","stage":"D5","type":"parquet","exists":true,"size":8343,"schema_status":"PASS","date_range_status":"PASS","sha256":"8856ea4433c429051d413be7aff8446df6179dd33157bd8a88c8a55f1583f173","canonical":true,"notes":"69 rows, 51 sample rows included, 17 unique strategy configurations in DSR"},
+    {"name":"statistical_acceptance","path":"statistical_acceptance.parquet","stage":"D5","type":"parquet","exists":true,"size":6993,"schema_status":"PASS","date_range_status":"PASS","sha256":"8ccdf9c6e2c4cc856a96aaca7b7e0735b64dee4f4f1a1a21109fca9006ec0c0d","canonical":true,"notes":"daily PSR/DSR and effective trials"},
+    {"name":"trade_excursions","path":"trade_excursions.parquet","stage":"D5","type":"parquet","exists":true,"size":288208,"schema_status":"PASS","date_range_status":"PASS","sha256":"e9dd009c53e16e15d5f86dffae5b39a6488f9d93359fb4570762bfe60c3d7da7","canonical":true,"notes":"5,973 trades"},
+    {"name":"final_reports","path":"reports/final/","stage":"D5","type":"markdown","exists":true,"size":11589,"schema_status":"PASS","date_range_status":"PASS","sha256":"9f8694544a3c801de116fed0087f9c3d0072d6ce468c64e9a11a8df232bc7989","canonical":true,"notes":"aggregate SHA-256 of ten filename/content pairs; duplicate root outputs not deleted"}
+  ]
+}

@@ -1,64 +1,35 @@
 # TWSE Factor Lab
 
-`twse-factor-lab` is a Taiwan equity factor research foundation. Week 1 focuses on
-the official data layer, yfinance OHLCV fallback, Parquet research cache, and data
-quality reporting. Week 2 extends those existing Parquet outputs into research-ready
-matrices, factors, validation helpers, and Alphalens formatter readiness. Week 3
-adds config-driven OHLCV universe expansion readiness, a factor scoreboard, Top N
-selection, T+1 equal-weight portfolio construction, and a research-only backtest.
-Week 3.5 adds rebalance frequency controls, hold-until-drop buffer rule, cost
-sensitivity analysis, Top N sensitivity, turnover diagnostics, and backtest realism
-reporting.
+## Project Overview
 
-## Week 1 Scope
+An offline-first Taiwan equity factor research platform. It produces reproducible
+Parquet evidence and research-only backtests; it is not a live trading system or
+investment advice.
 
-Included:
+## Current Status
 
-- Python project structure with `src/` package layout
-- TWSE OpenAPI client and endpoint registry
-- yfinance OHLCV fallback for Taiwan tickers
-- Normalized universe, valuation, and OHLCV schemas
-- Parquet processed-data cache
-- Data quality summary
-- Unit tests that do not require live network access
+Research Platform RC1: **PASS / CLOSED**  
+Strategy: **REJECTED**
 
-Not included in Week 1:
+## Architecture
 
-- Factor calculation
-- Alphalens analysis
-- vectorbt backtesting
-- Portfolio construction
-- Trading cost model
-- Shioaji live trading
-- ML / DL workflows
+```text
+TWSE / yfinance inputs → D2 integrity + universe → D2.5 PIT
+→ D3 factors → D3.5 composite/breadth → D1 execution calendar
+→ Custom + Vectorbt parity → Pyfolio → D4 robustness → D5 acceptance → RC1 governance
+```
 
-## Data Sources
+Signals are formed on T and executed on the next trading day T+1. No same-day
+execution or future-price fill is part of the canonical semantics.
 
-| Data | Primary source | Fallback | Output |
-| --- | --- | --- | --- |
-| Listed-company universe | TWSE OpenAPI | Manual CSV later | `data/processed/universe.parquet` |
-| PE / PB / dividend yield | TWSE OpenAPI | None | `data/processed/valuation.parquet` |
-| OHLCV | yfinance | TWSE close/volume later | `data/processed/ohlcv.parquet` |
-| Data quality | Local pipeline | None | `reports/data_quality_summary.md` |
+## Research Governance
 
-## Week 2 Scope
+D1-D5 evidence is frozen. Selected factors are `risk_adjusted_momentum` and
+`historical_price_volume` with weights 0.5/0.5; Top-N=20, buffer=30, daily
+rebalance, breadth threshold=0.40, exposure 1.0/0.5, and cost assumptions are
+immutable in RC1. D4 is `REJECT`; D5 Strategy Acceptance is `REJECTED`.
 
-Included:
-
-- OHLCV matrix artifacts for close, high, low, and volume
-- Price-volume factors, snapshot-safe valuation factors, and composite outputs
-- Factor alignment checks and no-lookahead guard helpers
-- Alphalens-ready formatter inputs and readiness validation
-- Factor quality summary and artifact manifest
-
-Not included in Week 2:
-
-- vectorbt, backtesting, or portfolio construction
-- transaction cost modeling
-- historical reconstruction of valuation factors from empty `valuation.date`
-- full Alphalens tear sheet generation
-
-## Setup
+## Quick Start / Installation
 
 ```bash
 python -m venv .venv
@@ -66,123 +37,85 @@ python -m venv .venv
 .venv\Scripts\python -m pip install -e ".[dev]"
 ```
 
-## Run Data Pipeline
+## Configuration
+
+The canonical configuration is `config/strategy.yaml`. It controls data sources,
+factor windows, PIT rules, portfolio construction, execution lag, costs, and
+diagnostic grids. Do not edit frozen values for an RC1 reproduction.
+
+## Canonical Pipeline
+
+Run the supported stages in this order:
+
+```text
+run_data_pipeline.py
+run_fundamental_pipeline.py
+run_factor_pipeline.py
+run_factor_analysis.py
+run_factor_tearsheet.py
+run_composite_strategy.py
+run_performance_report.py
+run_robustness.py
+run_final_acceptance.py
+```
+
+Use `--config config/strategy.yaml` only on runners that expose that option.
+The legacy `run_backtest.py` can overwrite canonical composite artifacts; do not
+run it after the canonical D3.5 strategy runner.
+
+## D1-D5 Stages
+
+- D1: trading calendar and T+1 execution semantics.
+- D2: adjusted OHLCV, source integrity, eligibility, and PARTIAL TWSE universe.
+- D2.5: point-in-time fundamental alignment.
+- D3/D3.5: factor research, composite scoring, buffer, and breadth.
+- D4: IS/OOS robustness; verdict `REJECT`.
+- D5: frozen OOS acceptance; Strategy Acceptance `REJECTED`.
+
+## Custom / Vectorbt Economic Parity
+
+The Custom engine is the reference path. Vectorbt is cross-checked on the same
+weights and cost model in `data/processed/backtest_engine_comparison.parquet`.
+
+## Pyfolio
+
+Pyfolio reporting is available for performance analysis. Transaction data is a
+known limitation and is not used to replace canonical trade-excursion evidence.
+
+## Testing
 
 ```bash
-.venv\Scripts\python run_data_pipeline.py --config config/strategy.yaml
+python -m pytest
+python -m ruff check .
+openspec validate --all --strict
 ```
 
-The pipeline uses TWSE OpenAPI for official data and yfinance for a bounded OHLCV
-fallback subset configured in `config/strategy.yaml`.
+CI is offline/deterministic and runs install, Ruff, pytest, and OpenSpec strict
+validation. It does not require Yahoo, TWSE, MOPS, API keys, or private data.
 
-For Week 3, the default OHLCV setting is `data.ohlcv.ticker_limit: 100`, with
-batching, retry, failed ticker logging, and coverage metrics in
-`reports/data_quality_summary.md`.
+## Artifacts
 
-## Run Factor Pipeline
+Root machine-readable frozen evidence includes the D4/D5 handoffs, trial
+inventory, statistical acceptance, trade excursions, and processed research
+artifacts. Human-readable canonical reports are under `reports/final/`.
+`final_artifact_inventory.json` records existence, schema/date checks, hashes,
+and canonical-location decisions. Large generated Parquet is not committed
+merely to satisfy RC1.
 
-```bash
-.venv\Scripts\python run_factor_pipeline.py --config config/strategy.yaml
-```
+## Reproducibility
 
-The Week 2 factor pipeline reads the Week 1 Parquet outputs and writes:
+`reproducibility_manifest.json` records environment, git state, configuration
+hash, freeze ID, D4/D5 hashes, frozen parameters, verdicts, archive identifiers,
+and artifact hashes. `reports/rc1/` contains the clean-install and offline E2E
+reports.
 
-- `data/processed/close_matrix.parquet`
-- `data/processed/high_matrix.parquet`
-- `data/processed/low_matrix.parquet`
-- `data/processed/volume_matrix.parquet`
-- `data/processed/factors_price_volume.parquet`
-- `data/processed/factors_valuation_snapshot.parquet`
-- `data/processed/factors_composite.parquet`
-- `data/processed/_manifest.json`
-- `reports/factor_quality_summary.md`
+## Known Limitations
 
-Valuation factors are treated as latest snapshot data because `valuation.parquet`
-currently has an empty `date` column. The Week 2 pipeline reports that limitation
-explicitly and does not pretend those factors are historical point-in-time data.
+The platform retains PARTIAL TWSE coverage, survivorship bias, external data
+gaps, limited fundamental coverage, transaction-cost and execution-price
+assumptions, PARTIAL-universe breadth, benchmark/attribution limits, missing
+Pyfolio transactions, and close-to-close MAE/MFE approximation.
 
-## Run Factor Analysis
+## Final Verdict
 
-```bash
-.venv\Scripts\python run_factor_analysis.py --config config/strategy.yaml
-```
-
-The Week 2.5 analysis pipeline writes forward returns, IC/IR summaries, quantile
-returns, turnover, monotonicity checks, and `reports/factor_analysis_report.md`.
-
-## Run Backtest Pipeline
-
-```bash
-.venv\Scripts\python run_backtest.py --config config/strategy.yaml
-```
-
-The Week 3 backtest pipeline consumes the latest data, factor, and factor-analysis
-artifacts. It checks `backtest.min_ticker_count` before producing a normal baseline
-report, defaults to `historical_price_volume`, applies Top N selection, T+1 equal
-weights, and a fee/tax/slippage cost model.
-
-Snapshot valuation factors remain excluded from historical backtests:
-
-- `pb_inverse`
-- `pe_inverse`
-- `dividend_yield`
-- `latest_snapshot_mixed`
-
-Week 3 remains research-only. It is not live trading, broker integration, or
-investment advice.
-
-## Run Backtest Diagnostics Pipeline
-
-```bash
-.venv\Scripts\python run_backtest_diagnostics.py --config config/strategy.yaml
-```
-
-The Week 3.5 backtest diagnostics pipeline runs after `run_backtest.py` and produces:
-
-- `data/processed/rebalance_calendar.parquet` — signal and execution dates for
-  daily / weekly / monthly frequencies
-- `data/processed/backtest_scenarios.parquet` — no_cost / half_cost / base_cost /
-  high_cost sensitivity with cost_drag column
-- `data/processed/topn_sensitivity.parquet` — results for top_n = 10 / 20 / 30
-- `data/processed/rebalance_sensitivity.parquet` — results for daily / weekly /
-  monthly rebalance with rebalance_count
-- `data/processed/backtest_turnover_diagnostics.parquet` — avg / median / max /
-  annualized turnover, estimated cost drag
-- `data/processed/backtest_engine_comparison.parquet` — fallback engine vs vectorbt
-  (vectorbt reported as unavailable if not installed)
-- `reports/backtest_realism_report.md` — 15-section Markdown report answering
-  whether poor baseline is caused by factor weakness, cost drag, or high turnover
-
-Config knobs added to `config/strategy.yaml`:
-
-```yaml
-backtest:
-  top_n_grid: [10, 20, 30]
-  rebalance_frequency_grid: ["daily", "weekly", "monthly"]
-  rules:
-    hold_until_drop: true
-    drop_rank_buffer: 30
-  cost_sensitivity:
-    enabled: true
-    scenarios: [no_cost, half_cost, base_cost, high_cost]
-```
-
-## Run Tests and Checks
-
-```bash
-.venv\Scripts\python -m pytest
-.venv\Scripts\python -m ruff check .
-.venv\Scripts\python -m black .
-```
-
-## Roadmap
-
-- Week 1: data layer, Parquet cache, quality report
-- Week 2: factor engineering and Alphalens formatter readiness
-- Week 2.5: historical factor analysis
-- Week 3: OHLCV expansion readiness, factor scoreboard, Top N portfolio, and `vectorbt` or fallback backtesting
-- Week 3.5: rebalance controls, buffer rule, cost sensitivity, Top N sensitivity, turnover diagnostics, backtest realism report
-- Week 4: robustness checks, charts, and Markdown reports
-
-`alphalens-reloaded` and `vectorbt` are roadmap dependencies. They are not required
-to run Week 1 tests, the Week 1 data pipeline, or the Week 2 factor pipeline.
+Final status: **Research Platform RC1: PASS / CLOSED / Strategy: REJECTED**.

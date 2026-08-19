@@ -4,14 +4,13 @@
 .secrets/
 *.pem
 *.key
-openspec/
 doc/
-.github/
 .claude/
 .agent/
 .gemini/
 .cursor/
 .codex/
+openspec/*
 
 # Python
 venv/
@@ -38,7 +37,7 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-
+.github/*
 # IDEs
 .vscode/
 .idea/
@@ -78,6 +77,6 @@ test_broker_state.json
 
 /data/
 
-reports/*
+.venv*/
 .tokensave/*
-pyproject.toml
+reports/*
