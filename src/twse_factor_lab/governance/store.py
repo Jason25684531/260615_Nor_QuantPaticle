@@ -23,6 +23,7 @@ from twse_factor_lab.governance.schemas import (
 RESEARCH_MANIFEST_FILE = "research_manifest.json"
 DATASET_MANIFESTS_FILE = "dataset_manifests.json"
 EXPERIMENT_REGISTRY_FILE = "experiment_registry.json"
+TERMINAL_EXPERIMENT_STATUSES = frozenset({"completed", "failed", "aborted"})
 
 
 def research_dir(root: str | Path, research_id: str) -> Path:
@@ -43,6 +44,16 @@ def _read_json(path: Path, description: str) -> Any:
     if not path.exists():
         raise GovernanceError(f"{description} not found: {path}")
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _assert_cycle_not_frozen(root: str | Path, research_id: str) -> None:
+    freeze = (
+        research_dir(root, research_id) / "freeze" / "research_freeze_manifest.json"
+    )
+    if freeze.exists():
+        raise GovernanceError(
+            f"research cycle is frozen; registry is immutable: {research_id!r}"
+        )
 
 
 def save_research_manifest(manifest: ResearchManifest, root: str | Path) -> Path:
@@ -76,9 +87,7 @@ def add_dataset_manifest(
     return _write_json(path, root, entries)
 
 
-def load_dataset_manifests(
-    root: str | Path, research_id: str
-) -> list[DatasetManifest]:
+def load_dataset_manifests(root: str | Path, research_id: str) -> list[DatasetManifest]:
     path = research_dir(root, research_id) / DATASET_MANIFESTS_FILE
     if not path.exists():
         return []
@@ -91,6 +100,7 @@ def load_dataset_manifests(
 def register_experiment(record: ExperimentRecord, root: str | Path) -> Path:
     record.validate()
     load_research_manifest(root, record.research_id)
+    _assert_cycle_not_frozen(root, record.research_id)
     path = research_dir(root, record.research_id) / EXPERIMENT_REGISTRY_FILE
     entries = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
     if any(entry["experiment_id"] == record.experiment_id for entry in entries):
@@ -112,15 +122,31 @@ def load_experiment_registry(
 
 
 def update_experiment_status(
-    root: str | Path, research_id: str, experiment_id: str, status: str
+    root: str | Path,
+    research_id: str,
+    experiment_id: str,
+    status: str,
+    result: dict[str, Any] | None = None,
 ) -> Path:
-    """Update only the status of one experiment; results are never overwritten."""
+    """Update an experiment status and, when supplied, its final result.
+
+    Terminal experiments (completed/failed/aborted) are immutable: honest
+    trial counts require that a recorded outcome can never be rewritten.
+    """
     if status not in EXPERIMENT_STATUSES:
         raise GovernanceError(f"unknown experiment status: {status!r}")
+    _assert_cycle_not_frozen(root, research_id)
     path = research_dir(root, research_id) / EXPERIMENT_REGISTRY_FILE
     entries = _read_json(path, "experiment registry")
     for entry in entries:
         if entry["experiment_id"] == experiment_id:
+            if entry["status"] in TERMINAL_EXPERIMENT_STATUSES:
+                raise GovernanceError(
+                    f"experiment already {entry['status']}; terminal records "
+                    f"are immutable: {experiment_id!r}"
+                )
             entry["status"] = status
+            if result is not None:
+                entry["result"] = result
             return _write_json(path, root, entries)
     raise GovernanceError(f"unknown experiment_id: {experiment_id!r}")

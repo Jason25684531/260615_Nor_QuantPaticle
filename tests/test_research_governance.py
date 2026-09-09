@@ -247,3 +247,7 @@ def test_update_experiment_status(tmp_path):
         update_experiment_status(tmp_path, "mvp-v1", "exp-001", "mystery")
     with pytest.raises(GovernanceError, match="unknown experiment_id"):
         update_experiment_status(tmp_path, "mvp-v1", "exp-404", "completed")
+    with pytest.raises(GovernanceError, match="terminal records are immutable"):
+        update_experiment_status(
+            tmp_path, "mvp-v1", "exp-001", "failed", {"result": "rewrite"}
+        )

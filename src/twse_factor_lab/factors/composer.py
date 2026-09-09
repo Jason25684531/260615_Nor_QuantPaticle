@@ -57,6 +57,16 @@ def _weighted_average(
     return weighted_sum / weight_sum.where(weight_sum > 0)
 
 
+def compose_factor_scores(
+    matrices: dict[str, pd.DataFrame],
+    directions: dict[str, str],
+    weights: dict[str, float],
+) -> pd.DataFrame:
+    """Compose direction-aware percentile ranks using the canonical semantics."""
+    ordered = {name: matrices[name] for name in sorted(matrices)}
+    return _weighted_average(ordered, directions, weights)
+
+
 def build_composite_factor_frame(
     price_volume_factors: pd.DataFrame,
     valuation_factors: pd.DataFrame,

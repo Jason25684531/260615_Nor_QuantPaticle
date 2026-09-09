@@ -167,14 +167,21 @@ def _vectorbt_backtest(
 ) -> tuple[pd.DataFrame, pd.Series, pd.Series, dict[str, pd.DataFrame]]:
     import vectorbt as vbt
 
+    # CostModel defines slippage as a deterministic cost component, so it is
+    # charged through vectorbt's fee rates below.  Passing it to vectorbt's
+    # price-slippage parameter would create a second price semantics and
+    # break Custom/Vectorbt parity.
     fees = pd.DataFrame(0.0, index=close.index, columns=close.columns)
     event_mask = order_sizes.ne(0)
-    fees[event_mask & (order_sizes >= 0)] = cost_model.buy_fee_rate
+    fees[event_mask & (order_sizes >= 0)] = (
+        cost_model.buy_fee_rate + cost_model.slippage_rate
+    )
     fees[event_mask & (order_sizes < 0)] = (
-        cost_model.sell_fee_rate + cost_model.transaction_tax_rate
+        cost_model.sell_fee_rate
+        + cost_model.transaction_tax_rate
+        + cost_model.slippage_rate
     )
     slippage = pd.DataFrame(0.0, index=close.index, columns=close.columns)
-    slippage[event_mask] = cost_model.slippage_rate
     portfolio = vbt.Portfolio.from_orders(
         close.ffill(),
         size=order_sizes,
