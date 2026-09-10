@@ -56,7 +56,8 @@ class FactorGateConfig:
     min_quantile_ordering: float = 0.75
     max_top_bucket_turnover: float = 0.80
     min_rank_autocorrelation: float = 0.0
-    version: str = "factor-admission-mvp-v1"
+    primary_horizon: int = 20
+    version: str = "factor-admission-mvp-v2"
 
     def __post_init__(self) -> None:
         horizons = tuple(sorted(int(horizon) for horizon in self.horizons))
@@ -65,6 +66,10 @@ class FactorGateConfig:
             raise FactorGateError("horizons must contain positive integers")
         if len(set(horizons)) != len(horizons):
             raise FactorGateError("horizons must be unique")
+        if int(self.primary_horizon) not in horizons:
+            raise FactorGateError(
+                f"primary_horizon {self.primary_horizon} must be one of {horizons}"
+            )
         if self.quantiles < 2:
             raise FactorGateError("quantiles must be >= 2")
         if self.min_assets < 2:
@@ -100,6 +105,8 @@ class FactorDiagnostics:
     horizons: tuple[int, ...]
     quantiles: int
     threshold_version: str
+    primary_horizon: int
+    verdict_horizon: int
     selected_horizon: int | None
     coverage: float | None
     effective_assets: int
@@ -352,20 +359,16 @@ def _horizon_metrics(
     return rows
 
 
-def _select_horizon(metrics: list[dict[str, Any]]) -> dict[str, Any]:
-    sufficient = [
-        metric for metric in metrics if metric["sample_status"] == "SUFFICIENT"
-    ]
-    candidates = sufficient or metrics
-    return max(
-        candidates,
-        key=lambda metric: (
-            metric["mean_ic"] if metric["mean_ic"] is not None else float("-inf"),
-            metric["top_bottom_spread"]
-            if metric["top_bottom_spread"] is not None
-            else float("-inf"),
-            -metric["horizon"],
-        ),
+def _select_horizon(
+    metrics: list[dict[str, Any]], primary_horizon: int
+) -> dict[str, Any]:
+    """Return the pre-declared primary horizon's row; verdict is never post-hoc."""
+    for metric in metrics:
+        if metric["horizon"] == primary_horizon:
+            return metric
+    raise FactorGateError(
+        f"primary_horizon {primary_horizon} has no computed metrics; "
+        f"available horizons: {[m['horizon'] for m in metrics]}"
     )
 
 
@@ -408,7 +411,7 @@ def _run_diagnostics(
         turnover=turnover,
         rank_autocorrelation=rank_autocorrelation,
     )
-    selected = _select_horizon(metrics)
+    selected = _select_horizon(metrics, config.primary_horizon)
     if selected["sample_status"] == "INSUFFICIENT":
         verdict = "REJECT"
     elif selected["signal_pass"] and selected["stability_pass"]:
@@ -433,6 +436,8 @@ def _run_diagnostics(
         horizons=tuple(config.horizons),
         quantiles=config.quantiles,
         threshold_version=config.version,
+        primary_horizon=int(config.primary_horizon),
+        verdict_horizon=int(selected["horizon"]),
         selected_horizon=int(selected["horizon"]),
         coverage=float(selected["coverage"]),
         effective_assets=int(selected["effective_assets"]),

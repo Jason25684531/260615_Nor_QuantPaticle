@@ -144,6 +144,38 @@ def test_frozen_rc1_research_identity_rejected(tmp_path):
         )
 
 
+def test_frozen_cycle_blocks_dataset_manifest_writes(tmp_path):
+    save_research_manifest(make_manifest(), tmp_path)
+    freeze_dir = research_dir(tmp_path, "mvp-v1") / "freeze"
+    freeze_dir.mkdir(parents=True)
+    (freeze_dir / "research_freeze_manifest.json").write_text("{}", encoding="utf-8")
+    with pytest.raises(IsolationError, match="frozen"):
+        add_dataset_manifest(make_dataset(), tmp_path, "mvp-v1")
+
+
+def test_frozen_cycle_blocks_any_write_under_its_namespace(tmp_path):
+    save_research_manifest(make_manifest(), tmp_path)
+    freeze_dir = research_dir(tmp_path, "mvp-v1") / "freeze"
+    freeze_dir.mkdir(parents=True)
+    (freeze_dir / "research_freeze_manifest.json").write_text("{}", encoding="utf-8")
+    with pytest.raises(IsolationError, match="frozen"):
+        assert_write_allowed("data/research/mvp-v1/anything.json", tmp_path)
+
+
+def test_frozen_cycle_registry_is_immutable(tmp_path):
+    save_research_manifest(make_manifest(), tmp_path)
+    register_experiment(make_experiment(), tmp_path)
+    freeze_dir = research_dir(tmp_path, "mvp-v1") / "freeze"
+    freeze_dir.mkdir(parents=True)
+    (freeze_dir / "research_freeze_manifest.json").write_text("{}", encoding="utf-8")
+    with pytest.raises(IsolationError, match="frozen"):
+        register_experiment(make_experiment(experiment_id="exp-002"), tmp_path)
+    with pytest.raises(IsolationError, match="frozen"):
+        update_experiment_status(tmp_path, "mvp-v1", "exp-001", "running")
+    [record] = load_experiment_registry(tmp_path, "mvp-v1")
+    assert record == make_experiment()
+
+
 def test_dataset_manifest_round_trip(tmp_path):
     save_research_manifest(make_manifest(), tmp_path)
     dataset = make_dataset()

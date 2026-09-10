@@ -7,8 +7,11 @@ for writing these artifacts.
 from __future__ import annotations
 
 import hashlib
+import importlib.metadata as importlib_metadata
 import json
 import math
+import platform
+import subprocess
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -22,8 +25,12 @@ from twse_factor_lab.acceptance.psr import (
     moments,
     probabilistic_sharpe_ratio,
 )
+from twse_factor_lab.analysis.pyfolio_adapter import to_pyfolio_inputs
 from twse_factor_lab.analysis.research_robustness import config_fingerprint
+from twse_factor_lab.backtest.costs import CostModel
 from twse_factor_lab.backtest.robustness import compute_metrics
+from twse_factor_lab.backtest.vectorbt_engine import run_weight_backtest
+from twse_factor_lab.factors.registry import FactorRegistry
 from twse_factor_lab.governance import (
     ExperimentRecord,
     load_experiment_registry,
@@ -32,10 +39,22 @@ from twse_factor_lab.governance import (
     update_experiment_status,
 )
 from twse_factor_lab.governance.isolation import assert_write_allowed
+from twse_factor_lab.governance.store import TERMINAL_EXPERIMENT_STATUSES
+from twse_factor_lab.strategy.lab import StrategyDefinition, build_strategy_targets
 
 METHOD_VERSION = "oos-acceptance-freeze-mvp-v1"
+FRESH_OOS_METHOD_VERSION = "fresh-state-oos-v1"
 STATISTICS_VERSION = "acceptance.psr-dsr-v1"
-FREEZE_VERSION = "research-freeze-v1"
+FREEZE_VERSION = "research-freeze-v2"
+CRITICAL_DEPENDENCIES = (
+    "numpy",
+    "pandas",
+    "scipy",
+    "statsmodels",
+    "vectorbt",
+    "pyfolio",
+    "backtrader",
+)
 ACCEPTANCE_VERSION = "acceptance-matrix-v1"
 ACCEPTANCE_SECTIONS = (
     "factor_evidence",
@@ -119,7 +138,12 @@ def evaluate_oos(
     research_id: str | None = None,
     candidate_config: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Evaluate only OOS returns with fresh capital and no inherited state."""
+    """Slice OOS returns for a metrics-only view; NOT fresh-state execution evidence.
+
+    This slices an already-realized returns series and cannot re-derive the
+    positions those returns came from, so it cannot prove IS state was not
+    inherited. Use run_fresh_oos for OOS acceptance evidence.
+    """
     values = _returns(returns)
     start, end = pd.Timestamp(oos_start), pd.Timestamp(oos_end)
     if pd.isna(start) or pd.isna(end) or start > end:
@@ -173,6 +197,8 @@ def evaluate_oos(
             "status": "PASS",
             "rule": "only data available by T; signal T executes T+1",
         },
+        "evidence_type": "returns_slicing_metrics_only",
+        "fresh_state": False,
         "method": METHOD_VERSION,
     }
 
@@ -236,6 +262,157 @@ def run_oos_evaluation(
         raise
 
 
+def run_fresh_oos(
+    *,
+    root: str | Path,
+    research_id: str,
+    strategy_id: str,
+    experiment_id: str,
+    definition: StrategyDefinition,
+    factor_matrices: Mapping[str, pd.DataFrame],
+    close_matrix: pd.DataFrame,
+    admission_results: Mapping[str, Any],
+    cost_model: CostModel,
+    oos_start: str,
+    oos_end: str,
+    registry: FactorRegistry | None = None,
+    initial_cash: float = 1_000_000.0,
+) -> dict[str, Any]:
+    """Re-execute the locked strategy from fresh cash/empty positions at OOS start.
+
+    Reuses Strategy Lab's canonical target construction and the canonical
+    Custom Engine. Pre-OOS data only feeds lookback/ranking warmup inside target
+    construction; the engine itself is rerun on the OOS-window slice alone, so
+    day-1 OOS always buys the target weight fresh at that day's close instead of
+    inheriting any IS-period position or P&L.
+    """
+    root = Path(root)
+    try:
+        initial_cash = float(initial_cash)
+    except (TypeError, ValueError) as exc:
+        raise ResearchCycleError("initial_cash must be positive and finite") from exc
+    if not math.isfinite(initial_cash) or initial_cash <= 0:
+        raise ResearchCycleError("initial_cash must be positive and finite")
+    start, end = pd.Timestamp(oos_start), pd.Timestamp(oos_end)
+    if pd.isna(start) or pd.isna(end) or start > end:
+        raise ResearchCycleError("invalid OOS boundary")
+
+    research = load_research_manifest(root, research_id)
+    register_experiment(
+        ExperimentRecord(
+            experiment_id=experiment_id,
+            research_id=research_id,
+            config={
+                "experiment_type": "fresh_state_oos",
+                "strategy_id": strategy_id,
+                "oos_start": oos_start,
+                "oos_end": oos_end,
+                "selection_relevant": False,
+            },
+            dataset_version=research.dataset_version,
+            experiment_type="diagnostic",
+            status="running",
+            selection_relevant=False,
+        ),
+        root,
+    )
+    try:
+        close, portfolio_weights, _resolved = build_strategy_targets(
+            definition=definition,
+            root=root,
+            factor_matrices=factor_matrices,
+            close_matrix=close_matrix,
+            admission_results=admission_results,
+            registry=registry,
+        )
+        oos_close = close.loc[(close.index >= start) & (close.index <= end)]
+        if oos_close.empty:
+            raise ResearchCycleError("OOS period has no price observations")
+        oos_start_date = oos_close.index.min()
+        oos_end_date = oos_close.index.max()
+        warmup = close.loc[close.index < oos_start_date]
+
+        events = portfolio_weights.copy()
+        events["execution_date"] = pd.to_datetime(events["execution_date"])
+        carried_forward = (
+            events.loc[events["execution_date"] <= oos_start_date]
+            .sort_values("execution_date")
+            .groupby("ticker", as_index=False)
+            .last()
+        )
+        carried_forward["execution_date"] = oos_start_date
+        in_window = events.loc[
+            (events["execution_date"] > oos_start_date)
+            & (events["execution_date"] <= oos_end_date)
+        ]
+        oos_events = pd.concat([carried_forward, in_window], ignore_index=True)
+
+        results, _metrics_frame = run_weight_backtest(
+            close_matrix=oos_close,
+            portfolio_weights=oos_events,
+            cost_model=cost_model,
+            initial_cash=initial_cash,
+            top_n=definition.top_n,
+            use_vectorbt=False,
+            allow_fallback=True,
+        )
+        oos_returns, oos_positions, _transactions = to_pyfolio_inputs(results)
+        oos_nav = pd.Series(results["equity"].to_numpy(), index=oos_returns.index)
+        metrics = compute_metrics(oos_returns)
+        metrics.update(
+            {
+                "observation_count": int(len(oos_returns)),
+                "start_date": oos_start_date.date().isoformat(),
+                "end_date": oos_end_date.date().isoformat(),
+            }
+        )
+        oos_positions = oos_positions.copy()
+        oos_positions.index.name = "date"
+
+        result = {
+            "strategy_id": strategy_id,
+            "research_id": research_id,
+            "warmup_start": (
+                warmup.index.min().date().isoformat() if not warmup.empty else None
+            ),
+            "warmup_end": (
+                warmup.index.max().date().isoformat() if not warmup.empty else None
+            ),
+            "oos_start": oos_start_date.date().isoformat(),
+            "oos_end": oos_end_date.date().isoformat(),
+            "initial_cash": initial_cash,
+            "initial_positions": {},
+            "inherited_is_state": False,
+            "oos_returns": _records(oos_returns),
+            "oos_nav": _records(oos_nav),
+            "oos_positions": _json_value(
+                oos_positions.reset_index().to_dict("records")
+            ),
+            "oos_metrics": _json_value(metrics),
+            "lookahead": {
+                "status": "PASS",
+                "rule": "only data available by T; signal T executes T+1",
+            },
+            "evidence_type": "fresh_state_reexecution",
+            "fresh_state": True,
+            "method": FRESH_OOS_METHOD_VERSION,
+        }
+        directory = root / "data" / "research" / research_id / "oos" / strategy_id
+        path = _write_json(root, directory / "fresh_state_oos.json", result)
+        result["artifact_path"] = path
+        update_experiment_status(root, research_id, experiment_id, "completed", result)
+        return result
+    except Exception as exc:
+        update_experiment_status(
+            root,
+            research_id,
+            experiment_id,
+            "failed",
+            {"status": "failed", "error_type": type(exc).__name__, "error": str(exc)},
+        )
+        raise
+
+
 def build_research_trial_inventory(
     root: str | Path, research_id: str
 ) -> tuple[pd.DataFrame, int]:
@@ -282,22 +459,51 @@ def build_research_trial_inventory(
     return frame, effective
 
 
-def _trial_sharpes(
-    inventory: pd.DataFrame, observed_daily: float, effective: int
-) -> list[float]:
-    if effective <= 0:
-        return []
-    candidates = inventory[inventory["selection_relevant"]].copy()
-    candidates = candidates.drop_duplicates("config_fingerprint")
+def _extract_sharpe(result: Any) -> float | None:
+    if not isinstance(result, Mapping):
+        return None
+    metric = result.get("sharpe")
+    if metric is None:
+        metric = result.get("oos_metrics", {}).get("sharpe")
+    return None if metric is None else float(metric)
+
+
+def _strategy_selection_population(inventory: pd.DataFrame) -> pd.DataFrame:
+    """Rows eligible for the DSR-comparable strategy Sharpe distribution."""
+    if inventory.empty:
+        return inventory
+    mask = (
+        (inventory["experiment_type"] == "strategy_backtest")
+        & inventory["selection_relevant"]
+        & inventory["status"].isin(TERMINAL_EXPERIMENT_STATUSES)
+    )
+    return inventory[mask].drop_duplicates("config_fingerprint")
+
+
+def _unique_fingerprint_count(inventory: pd.DataFrame, experiment_type: str) -> int:
+    if inventory.empty:
+        return 0
+    mask = inventory["experiment_type"] == experiment_type
+    return int(inventory.loc[mask, "config_fingerprint"].nunique())
+
+
+def _trial_sharpes(inventory: pd.DataFrame) -> list[float]:
+    """Comparable daily Sharpe per strategy-selection trial; no imputation."""
+    population = _strategy_selection_population(inventory)
     values: list[float] = []
-    for result in candidates["result"]:
-        metric = result.get("sharpe") if isinstance(result, Mapping) else None
-        if metric is None and isinstance(result, Mapping):
-            metric = result.get("oos_metrics", {}).get("sharpe")
-        values.append(
-            float(metric) / math.sqrt(252) if metric is not None else observed_daily
+    missing: list[str] = []
+    for _, row in population.iterrows():
+        metric = _extract_sharpe(row["result"])
+        if metric is None:
+            missing.append(str(row["experiment_id"]))
+        else:
+            values.append(metric / math.sqrt(252))
+    if missing:
+        raise ResearchCycleError(
+            "strategy selection trial(s) missing comparable Sharpe, "
+            "imputation is not allowed: " + ", ".join(sorted(missing))
         )
-    return values + [observed_daily] * max(0, effective - len(values))
+    return values
 
 
 def compute_statistical_acceptance(
@@ -307,16 +513,33 @@ def compute_statistical_acceptance(
     benchmark_sharpe: float = 0.0,
     acceptance_threshold: float = 0.95,
 ) -> dict[str, Any]:
-    """Reuse canonical PSR/DSR functions with registry-derived trial count."""
+    """Reuse canonical PSR/DSR functions with a strategy-only trial count.
+
+    DSR N is the strategy-selection population size, not the broad
+    selection-relevant count: factor_test/diagnostic rows never inflate it.
+    """
     values = _returns(returns)
     if len(values) <= 1:
         raise ResearchCycleError(
             "statistical acceptance needs at least two observations"
         )
-    effective = int(
-        inventory.loc[
-            inventory["selection_relevant"], "config_fingerprint"
-        ].nunique()
+    trial_sharpes = _trial_sharpes(inventory)
+    strategy_count = len(trial_sharpes)
+    factor_count = _unique_fingerprint_count(inventory, "factor_test")
+    diagnostic_count = (
+        int(
+            inventory.loc[
+                ~inventory["experiment_type"].isin(
+                    {"factor_test", "strategy_backtest"}
+                ),
+                "config_fingerprint",
+            ].nunique()
+        )
+        if not inventory.empty
+        else 0
+    )
+    total_selection_relevant = int(
+        inventory.loc[inventory["selection_relevant"], "config_fingerprint"].nunique()
         if not inventory.empty
         else 0
     )
@@ -329,7 +552,6 @@ def compute_statistical_acceptance(
         skewness=skewness,
         kurtosis_excess=kurtosis - 3.0,
     )
-    trial_sharpes = _trial_sharpes(inventory, observed, effective)
     dsr, sr0 = (
         deflated_sharpe_ratio(observed, len(values), trial_sharpes)
         if trial_sharpes
@@ -337,9 +559,9 @@ def compute_statistical_acceptance(
     )
     status = (
         "PASS"
-        if effective and dsr is not None and dsr >= acceptance_threshold
+        if strategy_count and dsr is not None and dsr >= acceptance_threshold
         else "INSUFFICIENT"
-        if not effective
+        if not strategy_count
         else "REJECT"
     )
     return {
@@ -347,7 +569,7 @@ def compute_statistical_acceptance(
         "psr": float(psr),
         "dsr": None if dsr is None else float(dsr),
         "sr0_daily": None if sr0 is None else float(sr0),
-        "effective_trials": effective,
+        "effective_trials": strategy_count,
         "observed_sharpe_daily": float(observed),
         "benchmark_sharpe": float(benchmark_sharpe),
         "sample_size": int(len(values)),
@@ -358,11 +580,13 @@ def compute_statistical_acceptance(
         "method": STATISTICS_VERSION,
         "effective_trial_count_source": (
             "Experiment Registry unique config_fingerprint where "
-            "selection_relevant=true"
+            "experiment_type=strategy_backtest, selection_relevant=true, "
+            "terminal, with a comparable Sharpe"
         ),
-        "missing_trial_result_assumption": (
-            "missing terminal result uses observed daily Sharpe; count is retained"
-        ),
+        "factor_selection_trial_count": factor_count,
+        "strategy_selection_trial_count": strategy_count,
+        "diagnostic_count": diagnostic_count,
+        "total_selection_relevant_experiments": total_selection_relevant,
         "risk_free_rate": 0.0,
     }
 
@@ -451,13 +675,62 @@ def _hash_files(root: Path, paths: Sequence[Path]) -> dict[str, str]:
     }
 
 
+def _repo_root() -> Path:
+    """Locate the source repository root, independent of the data `root`."""
+    here = Path(__file__).resolve()
+    for candidate in (here, *here.parents):
+        if (candidate / ".git").exists():
+            return candidate
+    return here.parents[3]
+
+
+def _git_state() -> dict[str, Any]:
+    """Capture actual git SHA / dirty status; never fabricate a value."""
+    repo_root = _repo_root()
+    sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout.strip()
+    if not sha:
+        return {"code_revision": None, "git_dirty": None}
+    status = subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout
+    return {"code_revision": sha, "git_dirty": bool(status.strip())}
+
+
+def _dependency_snapshot() -> dict[str, str | None]:
+    """Installed critical dependency versions; unavailable packages are None."""
+    snapshot: dict[str, str | None] = {}
+    for name in CRITICAL_DEPENDENCIES:
+        try:
+            snapshot[name] = importlib_metadata.version(name)
+        except importlib_metadata.PackageNotFoundError:
+            snapshot[name] = None
+    return snapshot
+
+
+def _project_version() -> str | None:
+    try:
+        return importlib_metadata.version("twse-factor-lab")
+    except importlib_metadata.PackageNotFoundError:
+        return None
+
+
 def freeze_research_cycle(
     *,
     root: str | Path,
     research_id: str,
     candidate_config: Mapping[str, Any] | None,
     acceptance: Mapping[str, Any],
-    code_revision: str | None = None,
+    require_clean_tree: bool = False,
 ) -> dict[str, Any]:
     """Write a self-contained, hash-verified freeze below the research namespace."""
     root = Path(root).resolve()
@@ -467,6 +740,12 @@ def freeze_research_cycle(
     freeze_manifest_path = freeze_root / "research_freeze_manifest.json"
     if freeze_manifest_path.exists():
         raise ResearchCycleError("research cycle is already frozen")
+    git_state = _git_state()
+    if require_clean_tree and git_state["git_dirty"] is not False:
+        raise ResearchCycleError(
+            "formal acceptance freeze requires a clean git tree: "
+            f"git_dirty={git_state['git_dirty']!r}"
+        )
     records = load_experiment_registry(root, research_id)
     running = [
         record.experiment_id
@@ -532,10 +811,13 @@ def freeze_research_cycle(
         "evaluation_status": acceptance.get("evaluation_status"),
         "effective_trials": effective,
         "artifact_hashes": hashes,
-        "code_revision": code_revision,
+        "code_revision": git_state["code_revision"],
+        "git_dirty": git_state["git_dirty"],
+        "python_version": platform.python_version(),
+        "project_version": _project_version(),
+        "dependency_snapshot": _dependency_snapshot(),
         "artifact_hashes_path": hashes_path.relative_to(root).as_posix(),
     }
-    _write_json(root, freeze_manifest_path, freeze_payload)
     reproducibility = {
         "manifest_version": FREEZE_VERSION,
         "research_id": research_id,
@@ -548,9 +830,23 @@ def freeze_research_cycle(
         "effective_trials": effective,
         "artifact_hashes": hashes,
         "freeze_manifest": freeze_manifest_path.relative_to(root).as_posix(),
-        "code_revision": code_revision,
+        "code_revision": git_state["code_revision"],
+        "git_dirty": git_state["git_dirty"],
+        "python_version": freeze_payload["python_version"],
+        "project_version": freeze_payload["project_version"],
+        "dependency_snapshot": freeze_payload["dependency_snapshot"],
     }
     _write_json(root, freeze_root / "reproducibility_manifest.json", reproducibility)
+    # Scan every other artifact that now exists before writing the complete
+    # inventory into the manifest itself, since the manifest's existence is
+    # the frozen/read-only signal (assert_research_cycle_writable) and must
+    # therefore be written last.
+    freeze_payload["complete_inventory"] = sorted(
+        path.relative_to(root).as_posix()
+        for path in research_root.rglob("*")
+        if path.is_file()
+    )
+    _write_json(root, freeze_manifest_path, freeze_payload)
     return verify_research_freeze(root, research_id)
 
 
@@ -567,6 +863,22 @@ def verify_research_freeze(root: str | Path, research_id: str) -> dict[str, Any]
     hashes = hash_payload.get("artifacts", {})
     if manifest.get("artifact_hashes") != hashes:
         raise ResearchCycleError("freeze hash manifest is inconsistent")
+    research_root = freeze_root.parent
+    expected_inventory = set(manifest.get("complete_inventory", []))
+    expected_inventory.add(manifest_path.relative_to(root).as_posix())
+    actual_inventory = {
+        path.relative_to(root).as_posix()
+        for path in research_root.rglob("*")
+        if path.is_file()
+    }
+    missing_paths = expected_inventory - actual_inventory
+    if missing_paths:
+        raise ResearchCycleError(f"frozen artifact missing: {sorted(missing_paths)}")
+    unexpected_paths = actual_inventory - expected_inventory
+    if unexpected_paths:
+        raise ResearchCycleError(
+            f"unexpected file in frozen namespace: {sorted(unexpected_paths)}"
+        )
     checked: dict[str, str] = {}
     for relative, expected in hashes.items():
         path = root / relative
@@ -586,6 +898,7 @@ def verify_research_freeze(root: str | Path, research_id: str) -> dict[str, Any]
         "effective_trials": int(manifest["effective_trials"]),
         "artifact_count": len(checked),
         "artifact_hashes": checked,
+        "complete_inventory_count": len(expected_inventory),
         "freeze_path": manifest_path.relative_to(root).as_posix(),
     }
 
@@ -594,6 +907,7 @@ __all__ = [
     "ACCEPTANCE_SECTIONS",
     "ACCEPTANCE_VERSION",
     "FREEZE_VERSION",
+    "FRESH_OOS_METHOD_VERSION",
     "METHOD_VERSION",
     "ResearchCycleError",
     "assert_no_lookahead",
@@ -602,6 +916,7 @@ __all__ = [
     "compute_statistical_acceptance",
     "evaluate_oos",
     "freeze_research_cycle",
+    "run_fresh_oos",
     "run_oos_evaluation",
     "verify_research_freeze",
 ]

@@ -3,6 +3,7 @@
 from twse_factor_lab.governance.isolation import (
     FROZEN_RESEARCH_IDS,
     IsolationError,
+    assert_research_cycle_writable,
     assert_research_id_allowed,
     assert_write_allowed,
 )
@@ -37,6 +38,7 @@ __all__ = [
     "IsolationError",
     "ResearchManifest",
     "add_dataset_manifest",
+    "assert_research_cycle_writable",
     "assert_research_id_allowed",
     "assert_write_allowed",
     "load_dataset_manifests",

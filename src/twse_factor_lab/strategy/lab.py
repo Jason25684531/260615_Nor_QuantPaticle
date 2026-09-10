@@ -533,38 +533,24 @@ def _build_trial_payload(
     )
 
 
-def run_strategy_trial(
+def build_strategy_targets(
     *,
     definition: StrategyDefinition,
-    experiment_id: str,
     root: str | Path,
     factor_matrices: Mapping[str, pd.DataFrame],
     close_matrix: pd.DataFrame,
     admission_results: Mapping[str, Any],
     registry: FactorRegistry | None = None,
-    strategy_registry: StrategyRegistry | None = None,
-    cost_model: CostModel | None = None,
-    cost_models: Mapping[str, CostModel] | None = None,
-    initial_cash: float = 1_000_000,
-) -> StrategyTrialResult:
-    """Run one explicit strategy config and persist one governed experiment."""
+) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, Any]]:
+    """Build canonical rebalance targets shared by IS trials and fresh-state OOS."""
     root = Path(root)
     registry = registry or build_default_registry()
-    strategy_registry = strategy_registry or StrategyRegistry()
-    strategy_registry.register(definition)
     research = load_research_manifest(root, definition.research_id)
     resolved = definition.validate(
         research=research,
         registry=registry,
         admission_results=admission_results,
     )
-    selected_cost_model = _resolve_cost_model(
-        definition, cost_model=cost_model, cost_models=cost_models
-    )
-    initial_cash = _finite(initial_cash, "initial_cash")
-    if initial_cash <= 0:
-        raise StrategyLabError("initial_cash must be positive")
-    _require_slug(experiment_id, "experiment_id")
     close = _validate_matrix(close_matrix, "close_matrix").sort_index(axis=1)
     if close.empty:
         raise StrategyLabError("close_matrix must not be empty")
@@ -610,6 +596,43 @@ def run_strategy_trial(
     portfolio_weights = build_equal_weight_portfolio(
         positions,
         rebalance_calendar=calendar,
+    )
+    return close, portfolio_weights, resolved
+
+
+def run_strategy_trial(
+    *,
+    definition: StrategyDefinition,
+    experiment_id: str,
+    root: str | Path,
+    factor_matrices: Mapping[str, pd.DataFrame],
+    close_matrix: pd.DataFrame,
+    admission_results: Mapping[str, Any],
+    registry: FactorRegistry | None = None,
+    strategy_registry: StrategyRegistry | None = None,
+    cost_model: CostModel | None = None,
+    cost_models: Mapping[str, CostModel] | None = None,
+    initial_cash: float = 1_000_000,
+) -> StrategyTrialResult:
+    """Run one explicit strategy config and persist one governed experiment."""
+    root = Path(root)
+    registry = registry or build_default_registry()
+    strategy_registry = strategy_registry or StrategyRegistry()
+    strategy_registry.register(definition)
+    selected_cost_model = _resolve_cost_model(
+        definition, cost_model=cost_model, cost_models=cost_models
+    )
+    initial_cash = _finite(initial_cash, "initial_cash")
+    if initial_cash <= 0:
+        raise StrategyLabError("initial_cash must be positive")
+    _require_slug(experiment_id, "experiment_id")
+    close, portfolio_weights, resolved = build_strategy_targets(
+        definition=definition,
+        root=root,
+        factor_matrices=factor_matrices,
+        close_matrix=close_matrix,
+        admission_results=admission_results,
+        registry=registry,
     )
     config = definition.to_config(
         directions=resolved["directions"],

@@ -56,14 +56,17 @@ def _register(
     config,
     status="completed",
     result=None,
+    experiment_type=None,
 ):
+    if experiment_type is None:
+        experiment_type = "strategy_backtest" if selection_relevant else "diagnostic"
     register_experiment(
         ExperimentRecord(
             experiment_id=experiment_id,
             research_id="day7-test",
             config=config,
             dataset_version="dataset-v1",
-            experiment_type="strategy_backtest" if selection_relevant else "diagnostic",
+            experiment_type=experiment_type,
             status=status,
             selection_relevant=selection_relevant,
             result=result or {},
@@ -190,14 +193,76 @@ def test_statistics_reuses_canonical_psr_dsr_and_is_deterministic(tmp_path):
         selection_relevant=True,
         config={"strategy_id": "candidate", "top_n": 2},
         status="failed",
+        result={"sharpe": 0.5},
     )
     inventory, _effective = build_research_trial_inventory(root, "day7-test")
     first = compute_statistical_acceptance(_returns().iloc[5:], inventory)
     second = compute_statistical_acceptance(_returns().iloc[5:], inventory)
     assert first == second
     assert first["effective_trials"] == 2
+    assert first["strategy_selection_trial_count"] == 2
     assert first["method"] == "acceptance.psr-dsr-v1"
     assert first["psr"] is not None and first["dsr"] is not None
+
+
+def test_dsr_population_excludes_factor_and_diagnostic_trials(tmp_path):
+    root = _prepare(tmp_path)
+    for i in range(10):
+        _register(
+            root,
+            f"factor-{i}",
+            selection_relevant=True,
+            config={"factor_id": f"factor-{i}"},
+            experiment_type="factor_test",
+            result={"sharpe": 5.0},
+        )
+    for i in range(3):
+        _register(
+            root,
+            f"strategy-{i}",
+            selection_relevant=True,
+            config={"strategy_id": "candidate", "top_n": i + 1},
+            result={"sharpe": 1.0 + i},
+        )
+    for i in range(20):
+        _register(
+            root,
+            f"diagnostic-{i}",
+            selection_relevant=False,
+            config={"kind": "diagnostic", "seq": i},
+            experiment_type="diagnostic",
+            result={"sharpe": 9.0},
+        )
+
+    inventory, _effective = build_research_trial_inventory(root, "day7-test")
+    result = compute_statistical_acceptance(_returns().iloc[5:], inventory)
+
+    assert result["factor_selection_trial_count"] == 10
+    assert result["strategy_selection_trial_count"] == 3
+    assert result["effective_trials"] == 3
+    assert result["diagnostic_count"] == 20
+    assert result["total_selection_relevant_experiments"] == 13
+
+
+def test_missing_strategy_sharpe_fails_fast_without_imputation(tmp_path):
+    root = _prepare(tmp_path)
+    _register(
+        root,
+        "strategy-ok",
+        selection_relevant=True,
+        config={"strategy_id": "candidate", "top_n": 1},
+        result={"sharpe": 1.0},
+    )
+    _register(
+        root,
+        "strategy-missing",
+        selection_relevant=True,
+        config={"strategy_id": "candidate", "top_n": 2},
+        result={},
+    )
+    inventory, _effective = build_research_trial_inventory(root, "day7-test")
+    with pytest.raises(ResearchCycleError, match="strategy-missing"):
+        compute_statistical_acceptance(_returns().iloc[5:], inventory)
 
 
 def test_acceptance_separates_platform_and_no_candidate_status():
@@ -249,7 +314,6 @@ def test_freeze_hashes_are_self_consistent_and_tamper_detected(tmp_path):
         research_id="day7-test",
         candidate_config=None,
         acceptance=acceptance,
-        code_revision="fixture-revision",
     )
     assert frozen["status"] == "PASS"
     freeze = tmp_path / "data/research/day7-test/freeze"
@@ -267,6 +331,119 @@ def test_freeze_hashes_are_self_consistent_and_tamper_detected(tmp_path):
     )
     with pytest.raises(ResearchCycleError, match="hash mismatch"):
         verify_research_freeze(root, "day7-test")
+
+
+def test_verify_freeze_detects_unexpected_and_missing_files(tmp_path):
+    root = _prepare(tmp_path)
+    _register(root, "terminal", selection_relevant=True, config={"top_n": 1})
+    acceptance = build_acceptance_matrix(_evidence(["UNAVAILABLE"] * 8))
+    freeze_research_cycle(
+        root=root,
+        research_id="day7-test",
+        candidate_config=None,
+        acceptance=acceptance,
+    )
+    research_dir = tmp_path / "data/research/day7-test"
+    assert verify_research_freeze(root, "day7-test")["status"] == "PASS"
+
+    (research_dir / "freeze" / "unexpected_extra.json").write_text(
+        "{}", encoding="utf-8"
+    )
+    with pytest.raises(ResearchCycleError, match="unexpected file"):
+        verify_research_freeze(root, "day7-test")
+    (research_dir / "freeze" / "unexpected_extra.json").unlink()
+    assert verify_research_freeze(root, "day7-test")["status"] == "PASS"
+
+    (research_dir / "dataset_manifests.json").unlink(missing_ok=True)
+    (research_dir / "research_manifest.json").unlink()
+    with pytest.raises(ResearchCycleError, match="frozen artifact missing"):
+        verify_research_freeze(root, "day7-test")
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        "data/research/day7-test/research_manifest.json",
+        "data/research/day7-test/experiment_registry.json",
+        "data/research/day7-test/freeze/acceptance_handoff.json",
+    ],
+)
+def test_tamper_on_any_frozen_artifact_fails_verify(tmp_path, relative_path):
+    root = _prepare(tmp_path)
+    _register(root, "terminal", selection_relevant=True, config={"top_n": 1})
+    acceptance = build_acceptance_matrix(_evidence(["UNAVAILABLE"] * 8))
+    freeze_research_cycle(
+        root=root,
+        research_id="day7-test",
+        candidate_config=None,
+        acceptance=acceptance,
+    )
+    assert verify_research_freeze(root, "day7-test")["status"] == "PASS"
+    (tmp_path / relative_path).write_text(
+        json.dumps({"tampered": True}), encoding="utf-8"
+    )
+    with pytest.raises(ResearchCycleError, match="hash mismatch"):
+        verify_research_freeze(root, "day7-test")
+
+
+def test_freeze_records_reproducibility_metadata(tmp_path):
+    root = _prepare(tmp_path)
+    _register(root, "terminal", selection_relevant=True, config={"top_n": 1})
+    acceptance = build_acceptance_matrix(_evidence(["UNAVAILABLE"] * 8))
+    freeze_research_cycle(
+        root=root,
+        research_id="day7-test",
+        candidate_config=None,
+        acceptance=acceptance,
+    )
+    manifest = json.loads(
+        (
+            tmp_path / "data/research/day7-test/freeze/research_freeze_manifest.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert manifest["code_revision"]
+    assert manifest["git_dirty"] in (True, False)
+    assert manifest["python_version"]
+    assert manifest["dependency_snapshot"]["numpy"]
+    assert manifest["dependency_snapshot"]["backtrader"]
+
+
+def test_freeze_requires_clean_tree_when_formal(tmp_path, monkeypatch):
+    import twse_factor_lab.acceptance.research_cycle as research_cycle
+
+    root = _prepare(tmp_path)
+    _register(root, "terminal", selection_relevant=True, config={"top_n": 1})
+    acceptance = build_acceptance_matrix(_evidence(["UNAVAILABLE"] * 8))
+    monkeypatch.setattr(
+        research_cycle,
+        "_git_state",
+        lambda: {"code_revision": "deadbeef", "git_dirty": True},
+    )
+    with pytest.raises(ResearchCycleError, match="clean git tree"):
+        freeze_research_cycle(
+            root=root,
+            research_id="day7-test",
+            candidate_config=None,
+            acceptance=acceptance,
+            require_clean_tree=True,
+        )
+    assert not (
+        tmp_path / "data/research/day7-test/freeze/research_freeze_manifest.json"
+    ).exists()
+
+    monkeypatch.setattr(
+        research_cycle,
+        "_git_state",
+        lambda: {"code_revision": "deadbeef", "git_dirty": False},
+    )
+    result = freeze_research_cycle(
+        root=root,
+        research_id="day7-test",
+        candidate_config=None,
+        acceptance=acceptance,
+        require_clean_tree=True,
+    )
+    assert result["status"] == "PASS"
 
 
 def test_freeze_locks_registry_and_stays_in_research_namespace(tmp_path):

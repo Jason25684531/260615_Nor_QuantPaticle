@@ -219,9 +219,11 @@ def _run_backtrader(
                 for _data, size, price in buys
             )
             buy_scale = min(1.0, cash_after_sells / buy_cost) if buy_cost else 1.0
-            if buy_scale < 1.0:
-                # Leave a floating-point cushion for Backtrader's cash check.
-                buy_scale *= 1.0 - 1e-15
+            # Leave a floating-point cushion for Backtrader's cash check even when
+            # cash_after_sells == buy_cost exactly (buy_scale == 1.0); Backtrader's
+            # internal fill accounting can diverge from this estimate by an epsilon
+            # and reject the last buy in the bar for a harmless margin shortfall.
+            buy_scale *= 1.0 - 1e-15
             for data, size, _price in sells:
                 self.broker.addcommissioninfo(
                     sell_commission(), name=str(data._name)

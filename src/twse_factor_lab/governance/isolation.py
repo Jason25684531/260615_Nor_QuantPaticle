@@ -40,6 +40,25 @@ def assert_research_id_allowed(research_id: str) -> None:
         )
 
 
+def assert_research_cycle_writable(research_id: str, root: str | Path) -> None:
+    """Raise once a research cycle's freeze manifest exists on disk.
+
+    A frozen cycle's `research_freeze_manifest.json` is written last, after
+    every other artifact, so its mere existence is the read-only signal.
+    """
+    freeze_manifest = (
+        Path(root)
+        / RESEARCH_NAMESPACE
+        / research_id
+        / "freeze"
+        / "research_freeze_manifest.json"
+    )
+    if freeze_manifest.exists():
+        raise IsolationError(
+            f"research cycle is frozen; writes are refused: {research_id!r}"
+        )
+
+
 def assert_write_allowed(path: str | Path, root: str | Path) -> Path:
     """Return the resolved target if it lies inside the research namespace."""
     root = Path(root).resolve()
@@ -62,4 +81,7 @@ def assert_write_allowed(path: str | Path, root: str | Path) -> Path:
         raise IsolationError(
             f"governance artifacts must live under {RESEARCH_NAMESPACE}: {relative}"
         )
+    research_id_parts = relative.parts[len(RESEARCH_NAMESPACE.parts) :]
+    if research_id_parts:
+        assert_research_cycle_writable(research_id_parts[0], root)
     return target

@@ -105,12 +105,76 @@ def _normalise_pyfolio_metrics(raw: pd.Series) -> dict[str, Any]:
     return result
 
 
+CANONICAL_DEFINITION = {
+    "annualization": "252 trading sessions/year, geometric compounding",
+    "risk_free_rate": 0.0,
+    "nan_handling": "NaN filled with 0.0 before compounding",
+    "return_convention": "simple daily returns",
+}
+
+# Per-metric comparability: metrics with `comparable=True` use the same
+# formula in both layers (modulo floating-point noise), so a numeric
+# tolerance genuinely detects parity breaks. Metrics with `comparable=False`
+# are computed by fundamentally different formulas (documented in `reason`),
+# so a numeric gap there is an expected definitional difference, not a
+# parity failure, and must never be reported as FAIL.
+METRIC_DEFINITIONS: dict[str, dict[str, Any]] = {
+    "total_return": {
+        "comparable": True,
+        "tolerance": 1e-8,
+        "reason": "identical cumulative-compounding formula",
+    },
+    "cagr": {
+        "comparable": True,
+        "tolerance": 1e-8,
+        "reason": "identical 252-session geometric annualization formula",
+    },
+    "max_drawdown": {
+        "comparable": True,
+        "tolerance": 1e-8,
+        "reason": "identical peak-to-trough equity-curve formula",
+    },
+    "volatility": {
+        "comparable": False,
+        "tolerance": None,
+        "reason": (
+            "canonical uses population std (ddof=0); pyfolio's ddof "
+            "convention is package-defined and may differ"
+        ),
+    },
+    "sharpe": {
+        "comparable": False,
+        "tolerance": None,
+        "reason": (
+            "canonical: CAGR / annualized volatility (geometric ratio); "
+            "pyfolio: mean daily return / daily std * sqrt(252) "
+            "(classic arithmetic ratio) — different formulas, both rf=0"
+        ),
+    },
+    "sortino": {
+        "comparable": False,
+        "tolerance": None,
+        "reason": (
+            "canonical: CAGR / annualized downside semi-deviation "
+            "(geometric ratio); pyfolio: mean daily return / downside "
+            "deviation * sqrt(252) (classic arithmetic ratio)"
+        ),
+    },
+}
+
+PYFOLIO_DEFINITION = {
+    "annualization": "pyfolio-reloaded perf_stats defaults (package-defined)",
+    "risk_free_rate": 0.0,
+    "nan_handling": "package-defined",
+    "return_convention": "simple daily returns",
+}
+
+
 def _cross_check(
     canonical: dict[str, Any], pyfolio: dict[str, Any], tolerance: float
 ) -> dict[str, Any]:
-    shared = ("total_return", "cagr", "volatility", "sharpe", "sortino", "max_drawdown")
     checks: list[dict[str, Any]] = []
-    for metric in shared:
+    for metric, definition in METRIC_DEFINITIONS.items():
         left = canonical.get(metric)
         right = pyfolio.get(metric)
         if left is None or right is None:
@@ -120,29 +184,43 @@ def _cross_check(
                     "status": "UNKNOWN",
                     "canonical": left,
                     "pyfolio": right,
+                    "comparable": definition["comparable"],
+                    "reason": definition["reason"],
                 }
             )
             continue
         difference = abs(float(left) - float(right))
+        metric_tolerance = definition["tolerance"] if definition["comparable"] else None
+        status = (
+            ("PASS" if difference <= (metric_tolerance or tolerance) else "FAIL")
+            if definition["comparable"]
+            else "DEFINITION_DIFFERENCE"
+        )
         checks.append(
             {
                 "metric": metric,
                 "canonical": float(left),
                 "pyfolio": float(right),
                 "difference": difference,
-                "status": "PASS" if difference <= tolerance else "FAIL",
+                "tolerance": metric_tolerance,
+                "comparable": definition["comparable"],
+                "reason": definition["reason"],
+                "status": status,
             }
         )
+    if any(row["status"] == "FAIL" for row in checks):
+        overall_status = "FAIL"
+    elif any(row["status"] == "DEFINITION_DIFFERENCE" for row in checks):
+        overall_status = "PASS_WITH_DEFINITION_DIFFERENCE"
+    else:
+        overall_status = "PASS"
     return {
         "tolerance": tolerance,
-        "status": "FAIL" if any(row["status"] == "FAIL" for row in checks) else "PASS",
+        "status": overall_status,
         "checks": checks,
         "definition_notes": {
-            "canonical": "repository compute_metrics: 252 sessions, rf=0, ddof=0",
-        "pyfolio": (
-            "pyfolio-reloaded perf_stats defaults; annualization/risk "
-            "statistics are package-defined"
-        ),
+            "canonical": CANONICAL_DEFINITION,
+            "pyfolio": PYFOLIO_DEFINITION,
         },
     }
 

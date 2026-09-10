@@ -211,7 +211,7 @@ def _vectorbt_backtest(
             "gross_returns": np.nan,
             "cost_returns": np.nan,
             "turnover": turnover.to_numpy(),
-            "exposure": weights.sum(axis=1).to_numpy(),
+            "exposure": (positions.sum(axis=1) / equity).to_numpy(),
             "cash": cash.to_numpy(),
         }
     )

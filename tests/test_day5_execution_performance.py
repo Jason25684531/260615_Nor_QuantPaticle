@@ -294,6 +294,27 @@ def test_performance_positions_optional_and_nan_is_rejected():
         evaluate_performance(bad_returns)
 
 
+def test_cross_check_is_definition_aware(tmp_path):
+    import numpy as np
+
+    rng = np.random.default_rng(0)
+    returns = pd.Series(
+        rng.normal(0.0005, 0.01, 300), index=pd.bdate_range("2023-01-01", periods=300)
+    )
+    report = evaluate_performance(returns)
+    checks = {row["metric"]: row for row in report["cross_check"]["checks"]}
+    assert checks["total_return"]["status"] == "PASS"
+    assert checks["cagr"]["status"] == "PASS"
+    assert checks["max_drawdown"]["status"] == "PASS"
+    assert checks["sharpe"]["status"] == "DEFINITION_DIFFERENCE"
+    assert checks["sortino"]["status"] == "DEFINITION_DIFFERENCE"
+    assert report["cross_check"]["status"] == "PASS_WITH_DEFINITION_DIFFERENCE"
+    assert "reason" in checks["sharpe"]
+    notes = report["cross_check"]["definition_notes"]
+    assert notes["canonical"]["risk_free_rate"] == 0.0
+    assert notes["pyfolio"]["annualization"]
+
+
 def test_diagnostic_registry_is_not_selection_relevant(tmp_path):
     root, close, handoff_dir = _make_handoff(tmp_path)
     run_tri_engine_validation(

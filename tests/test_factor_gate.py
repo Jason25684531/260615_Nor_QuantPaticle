@@ -87,6 +87,7 @@ def prepare_root(tmp_path):
 def config(**overrides) -> FactorGateConfig:
     values = {
         "horizons": (1,),
+        "primary_horizon": 1,
         "min_assets": 5,
         "min_ic_observations": 2,
         "min_coverage": 0.9,

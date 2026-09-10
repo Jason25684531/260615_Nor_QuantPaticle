@@ -9,6 +9,7 @@ from typing import Any
 
 from twse_factor_lab.governance.isolation import (
     RESEARCH_NAMESPACE,
+    assert_research_cycle_writable,
     assert_research_id_allowed,
     assert_write_allowed,
 )
@@ -47,13 +48,7 @@ def _read_json(path: Path, description: str) -> Any:
 
 
 def _assert_cycle_not_frozen(root: str | Path, research_id: str) -> None:
-    freeze = (
-        research_dir(root, research_id) / "freeze" / "research_freeze_manifest.json"
-    )
-    if freeze.exists():
-        raise GovernanceError(
-            f"research cycle is frozen; registry is immutable: {research_id!r}"
-        )
+    assert_research_cycle_writable(research_id, root)
 
 
 def save_research_manifest(manifest: ResearchManifest, root: str | Path) -> Path:
