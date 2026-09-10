@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-from copy import deepcopy
 from itertools import product
 from pathlib import Path
 from typing import Any
@@ -111,12 +110,15 @@ def load_real_matrices() -> dict[str, Any]:
     missing_factors = set(FACTOR_CANDIDATES) - set(factor_matrices)
     if missing_factors:
         raise FileNotFoundError(
-            f"Phase 3 BLOCKED: candidate factors absent from real data: {missing_factors}"
+            f"Phase 3 BLOCKED: candidate factors absent from real data: "
+            f"{missing_factors}"
         )
     return {"close": close, "factors": factor_matrices, "paths": paths}
 
 
-def build_dataset_manifest(paths: dict[str, Path], close: pd.DataFrame) -> DatasetManifest:
+def build_dataset_manifest(
+    paths: dict[str, Path], close: pd.DataFrame
+) -> DatasetManifest:
     hasher = hashlib.sha256()
     row_count = 0
     for name in sorted(paths):
@@ -130,7 +132,10 @@ def build_dataset_manifest(paths: dict[str, Path], close: pd.DataFrame) -> Datas
         retrieved_at="2026-09-10",
         schema_version="processed-v1",
         processing_version="factor-pipeline-v1",
-        pit_rule="point-in-time as produced by run_data_pipeline/run_fundamental_pipeline",
+        pit_rule=(
+            "point-in-time as produced by "
+            "run_data_pipeline/run_fundamental_pipeline"
+        ),
         row_count=row_count,
         coverage=coverage,
         artifact_sha256=hasher.hexdigest(),
@@ -307,7 +312,9 @@ def main() -> None:
     weights = {fid: 1.0 / len(admitted) for fid in admitted}
 
     is_trials = []
-    for top_n, rebalance, cost in product(TOP_N_SEARCH, REBALANCE_SEARCH, COST_SCENARIOS):
+    for top_n, rebalance, cost in product(
+        TOP_N_SEARCH, REBALANCE_SEARCH, COST_SCENARIOS
+    ):
         strategy_id = f"is-trial-top{top_n}-{rebalance}-{cost}"
         definition = StrategyDefinition(
             strategy_id=strategy_id,
@@ -488,7 +495,10 @@ def main() -> None:
         ExperimentRecord(
             experiment_id="final-acceptance-matrix",
             research_id=RESEARCH_ID,
-            config={"experiment_type": "acceptance_matrix", "selection_relevant": False},
+            config={
+                "experiment_type": "acceptance_matrix",
+                "selection_relevant": False,
+            },
             dataset_version=DATASET_ID,
             experiment_type="diagnostic",
             status="completed",
@@ -499,7 +509,10 @@ def main() -> None:
     )
 
     freeze_path = ROOT / "data" / "research" / RESEARCH_ID / "acceptance_matrix.json"
-    freeze_path.write_text(json.dumps(acceptance, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+    freeze_path.write_text(
+        json.dumps(acceptance, ensure_ascii=False, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
 
     frozen = freeze_research_cycle(
         root=ROOT,
