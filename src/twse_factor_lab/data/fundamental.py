@@ -8,6 +8,7 @@ import json
 import random
 import re
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime
 from html.parser import HTMLParser
 from pathlib import Path
@@ -142,6 +143,32 @@ class RawFundamentalCache:
             encoding="utf-8",
         )
 
+    def quarantine(
+        self,
+        url: str,
+        params: dict[str, Any] | None,
+        *,
+        reason: str,
+    ) -> list[Path]:
+        """Keep an invalid cached response while freeing its success-cache key."""
+
+        key = self._key(url, params)
+        moved: list[Path] = []
+        for suffix in (".raw", ".json"):
+            path = self.root / f"{key}{suffix}"
+            if not path.exists():
+                continue
+            digest = hashlib.sha256(path.read_bytes()).hexdigest()[:12]
+            target = self.root / f"{key}.invalid-{digest}{suffix}"
+            path.replace(target)
+            moved.append(target)
+        self.record_gap(
+            url,
+            params,
+            metadata={"classification": "PARSE_ERROR", "error": reason},
+        )
+        return moved
+
 
 class FundamentalClient:
     """HTTP client that caches source responses before parsing them."""
@@ -157,6 +184,7 @@ class FundamentalClient:
         mops_timeout: int | None = None,
         throttle_seconds: float = 0.5,
         retry: int = 3,
+        mops_statement_min_ticker_count: int = 100,
         session: requests.Session | None = None,
     ) -> None:
         self.cache = cache
@@ -165,6 +193,12 @@ class FundamentalClient:
         self.mops_timeout = mops_timeout or timeout
         self.throttle_seconds = max(0.0, throttle_seconds)
         self.retry = max(0, retry)
+        self.mops_statement_min_ticker_count = max(
+            1, int(mops_statement_min_ticker_count)
+        )
+        self.invalid_response_count = 0
+        self.invalid_responses: list[dict[str, Any]] = []
+        self.failed_requests: list[str] = []
         self.session = session or requests.Session()
 
     def _request(
@@ -173,11 +207,19 @@ class FundamentalClient:
         url: str,
         params: dict[str, Any] | None = None,
         data: dict[str, Any] | None = None,
+        response_validator: Callable[[str], None] | None = None,
     ) -> str:
         request_params = {"params": params or {}, "data": data or {}}
         cached = self.cache.get(url, request_params)
         if cached is not None:
-            return cached
+            if response_validator is None:
+                return cached
+            try:
+                response_validator(cached)
+            except FundamentalDataError as exc:
+                self.cache.quarantine(url, request_params, reason=str(exc))
+            else:
+                return cached
         headers = {"User-Agent": self.browser_user_agent}
         error: Exception | None = None
         requested_at = datetime.now(UTC).isoformat()
@@ -213,6 +255,8 @@ class FundamentalClient:
                 )
                 if classification != "SUCCESS":
                     raise FundamentalDataError(f"{classification}: {url}")
+                if response_validator is not None:
+                    response_validator(content)
                 return self.cache.put(
                     url,
                     request_params,
@@ -269,12 +313,64 @@ class FundamentalClient:
             "season": season,
             "TYPEK": "sii",
         }
-        html = self._request("POST", get_fundamental_endpoint(endpoint), data=payload)
+        def validate(content: str) -> None:
+            try:
+                parsed = parse_mops_statement(content, year=year, season=season)
+                parsed_ticker_count = parsed["ticker"].nunique()
+            except FundamentalDataError as exc:
+                parsed_ticker_count = 0
+                error = str(exc)
+            else:
+                error = ""
+            if parsed_ticker_count < self.mops_statement_min_ticker_count:
+                self.invalid_response_count += 1
+                item = {
+                    "year": year,
+                    "season": season,
+                    "statement": statement,
+                    "parsed_ticker_count": int(parsed_ticker_count),
+                    "threshold": self.mops_statement_min_ticker_count,
+                }
+                if error:
+                    item["parse_error"] = error
+                self.invalid_responses.append(item)
+                self.failed_requests.append(
+                    f"mops {statement} {year}Q{season}: "
+                    f"parsed_ticker_count={parsed_ticker_count} < "
+                    f"{self.mops_statement_min_ticker_count}"
+                )
+                raise FundamentalDataError(
+                    "MOPS_TRUNCATED: "
+                    f"parsed_ticker_count={parsed_ticker_count} < "
+                    f"threshold={self.mops_statement_min_ticker_count}"
+                )
+
+        html = self._request(
+            "POST",
+            get_fundamental_endpoint(endpoint),
+            data=payload,
+            response_validator=validate,
+        )
         parsed = parse_mops_statement(html, year=year, season=season)
         metrics = (
             {"revenue", "net_income", "eps"} if statement == "income" else {"equity"}
         )
         return parsed.loc[parsed["metric"].isin(metrics)].reset_index(drop=True)
+
+    def response_sanity_report(self) -> dict[str, Any]:
+        """Return auditable MOPS response-quality diagnostics for this run."""
+
+        quarantined = len(list(self.cache.root.glob("*.invalid-*.json")))
+        return {
+            "response_sanity_rule": (
+                "parsed_ticker_count >= "
+                "fundamental.mops_statement_min_ticker_count"
+            ),
+            "response_sanity_threshold": self.mops_statement_min_ticker_count,
+            "invalid_response_count": max(self.invalid_response_count, quarantined),
+            "invalid_responses": list(self.invalid_responses),
+            "quarantined_response_count": quarantined,
+        }
 
     def publication_dates(self, ticker: str, year: int) -> pd.DataFrame:
         records: list[pd.DataFrame] = []
@@ -815,8 +911,11 @@ def build_fundamental_matrix(
     if not records:
         return pd.DataFrame(columns=["date", *PIT_COLUMNS])
     result = pd.concat(records, ignore_index=True)
+    extra_columns = [
+        column for column in pit.columns if column not in PIT_COLUMNS and column != "ticker"
+    ]
     return (
-        result[["date", *PIT_COLUMNS]]
+        result[["date", *PIT_COLUMNS, *extra_columns]]
         .sort_values(["date", "ticker", "metric"])
         .reset_index(drop=True)
     )
@@ -931,6 +1030,7 @@ def build_fundamental_coverage_report(
     live_pipeline_status: str = "PASS",
     failed_requests: list[str] | None = None,
     cache_statistics: dict[str, int] | None = None,
+    response_sanity: dict[str, Any] | None = None,
 ) -> str:
     statuses = pit["pit_status"].value_counts().to_dict()
     lines = [
@@ -944,6 +1044,14 @@ def build_fundamental_coverage_report(
         lines += [
             f"- raw_cache_hits: {cache_statistics['hits']}",
             f"- raw_cache_misses: {cache_statistics['misses']}",
+        ]
+    if response_sanity:
+        lines += [
+            f"- response_sanity_rule: {response_sanity['response_sanity_rule']}",
+            f"- response_sanity_threshold: "
+            f"{response_sanity['response_sanity_threshold']}",
+            f"- invalid_response_count: "
+            f"{response_sanity['invalid_response_count']}",
         ]
     lines += ["", "## Coverage", ""]
     lines += [

@@ -80,3 +80,5 @@ test_broker_state.json
 .venv*/
 .tokensave/*
 reports/*
+
+outputs/*

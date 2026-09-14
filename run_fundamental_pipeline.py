@@ -152,6 +152,9 @@ def run_pipeline(config_path: str | Path) -> dict[str, Path]:
         mops_timeout=int(fundamental.get("mops_timeout_seconds", 90)),
         throttle_seconds=float(fundamental.get("throttle_seconds", 0.5)),
         retry=int(fundamental.get("retry", 3)),
+        mops_statement_min_ticker_count=int(
+            fundamental.get("mops_statement_min_ticker_count", 100)
+        ),
     )
     statements, publications, revenue, valuation, errors = collect_fundamental_data(
         client,
@@ -237,6 +240,7 @@ def run_pipeline(config_path: str | Path) -> dict[str, Path]:
         live_pipeline_status=live_status,
         failed_requests=errors or None,
         cache_statistics=cache.statistics(),
+        response_sanity=client.response_sanity_report(),
     )
     _write_fundamental_status(config_path, paths, status=live_status, report=report)
     created_at = datetime.now(UTC)
