@@ -112,6 +112,28 @@ CANONICAL_DEFINITION = {
     "return_convention": "simple daily returns",
 }
 
+METRIC_SCHEMA_VERSION = "canonical-metrics-v2"
+
+# Auditable metric contract. Every value here MUST match the behaviour of
+# backtest.robustness.compute_metrics; tests assert this against the
+# implementation rather than duplicating literals.
+CANONICAL_METRIC_METADATA: dict[str, Any] = {
+    "return_frequency": "daily",
+    "annualization_factor": 252,
+    "risk_free_rate": 0.0,
+    "sortino_target": 0.0,
+    "volatility_ddof": 0,
+    "nan_policy": "reject_nonfinite_input_then_fillna_zero",
+    "return_convention": "simple",
+    "annualization_method": "geometric_cagr_over_annualized_volatility",
+    "metric_schema_version": METRIC_SCHEMA_VERSION,
+}
+
+
+def canonical_metric_metadata() -> dict[str, Any]:
+    """Return the auditable canonical-metric contract (single source of truth)."""
+    return dict(CANONICAL_METRIC_METADATA)
+
 # Per-metric comparability: metrics with `comparable=True` use the same
 # formula in both layers (modulo floating-point noise), so a numeric
 # tolerance genuinely detects parity breaks. Metrics with `comparable=False`
@@ -263,9 +285,17 @@ def evaluate_performance(
     except Exception as exc:
         raise PerformanceDiagnosticError(str(exc)) from exc
     pyfolio_metrics = _normalise_pyfolio_metrics(raw)
+    metric_definition = canonical_metric_metadata()
+    metric_definition["downside_deviation"] = _json_value(
+        canonical.get("downside_deviation")
+    )
+    metric_definition["canonical_metric_source"] = (
+        "backtest.robustness.compute_metrics"
+    )
     return {
         "status": "completed",
         "canonical_metrics": _json_value(canonical),
+        "metric_definition": metric_definition,
         "pyfolio_metrics": _json_value(pyfolio_metrics),
         "cross_check": _json_value(
             _cross_check(canonical, pyfolio_metrics, tolerance)

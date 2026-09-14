@@ -123,13 +123,16 @@ def compute_metrics(
     periods = len(values)
     cagr = float((1 + total_return) ** (252 / periods) - 1) if periods else np.nan
     volatility = float(values.std(ddof=0) * np.sqrt(252))
-    downside = values.clip(upper=0).std(ddof=0) * np.sqrt(252)
+    downside = float(values.clip(upper=0).std(ddof=0) * np.sqrt(252))
     drawdown = equity.div(equity.cummax()).sub(1.0)
     max_drawdown = float(drawdown.min())
     return {
         "total_return": total_return,
         "cagr": cagr,
         "volatility": volatility,
+        # Exposed Sortino denominator: same target (0), frequency (daily),
+        # NaN handling (fillna 0), ddof (0), and 252 annualization as the ratio.
+        "downside_deviation": downside,
         "sharpe": cagr / volatility if volatility else np.nan,
         "sortino": cagr / downside if downside else np.nan,
         "calmar": cagr / abs(max_drawdown) if max_drawdown else np.nan,
