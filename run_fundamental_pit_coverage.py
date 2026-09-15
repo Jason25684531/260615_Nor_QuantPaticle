@@ -170,11 +170,13 @@ def _write_data_report(
         "### Publication Expansion (before → after)",
         "",
         f"- Target eligible tickers: {expansion.get('target_ticker_count')}",
-        f"- Previously cached publication tickers: {expansion.get('existing_publication_ticker_count_before_run')}",
-        f"- Missing before: {expansion.get('missing_publication_ticker_count_before_run')}",
+        f"- Previously non-empty publication mappings: {expansion.get('publication_ticker_count_before', expansion.get('existing_publication_ticker_count_before_run'))}",
+        f"- Publication metadata tickers before: {expansion.get('publication_metadata_ticker_count_before', expansion.get('existing_publication_ticker_count_before_run'))}",
+        f"- Missing non-empty mappings before: {expansion.get('missing_ticker_count_before', expansion.get('missing_publication_ticker_count_before_run'))}",
         f"- Newly fetched tickers: {expansion.get('newly_fetched_ticker_count')}",
         f"- Source failures (ticker-year): {expansion.get('http_failure_count')}",
-        f"- Final publication covered: {expansion.get('final_publication_ticker_count')}",
+        f"- Final publication metadata tickers: {expansion.get('publication_metadata_ticker_count_after', expansion.get('final_publication_ticker_count'))}",
+        f"- Final non-empty publication mappings: {expansion.get('final_publication_ticker_count')}",
         f"- Remaining missing targets: {expansion.get('missing_target_ticker_count')}",
         f"- Target coverage: {float(expansion.get('target_publication_coverage_ratio') or 0.0):.4%}",
         f"- Enumeration status: {expansion.get('enumeration_status')}",
@@ -312,7 +314,6 @@ def run(
     # Remediation: the target universe comes from the canonical eligible set;
     # the raw cache only answers HIT/MISS and never defines enumeration.
     tickers = build_target_tickers(config_path, config)
-    publication_tickers_before = cached_publication_tickers(cache_root)
     if not tickers:
         raise RuntimeError("canonical publication-expansion target set is empty")
     target_digest = {
@@ -391,6 +392,20 @@ def run(
             "cached": 0,
             "failed": len(errors),
         }
+    if expansion_summary.get("target_ticker_sha256") not in {
+        None,
+        target_digest["target_ticker_sha256"],
+    }:
+        raise RuntimeError("publication expansion target hash differs from canonical target")
+    if expansion_summary.get("target_ticker_count") not in {
+        None,
+        len(tickers),
+    }:
+        raise RuntimeError("publication expansion target count differs from canonical target")
+    expansion_summary.setdefault(
+        "target_ticker_hash_format",
+        "SHA-256 of sorted clean_ticker values joined by newline with one trailing newline",
+    )
     # Kept as separate fields: expansion status never feeds the readiness verdict.
     readiness["enumeration_status"] = expansion_summary.get(
         "enumeration_status", "UNKNOWN"
@@ -456,8 +471,11 @@ def run(
         "readiness": output_dir / "data_readiness_report.json",
         "report": output_dir / "fundamental_data_report.md",
         "final_status": output_dir / "final_status_report.md",
+        "publication_dates_expanded": output_dir / "publication_dates_expanded.csv",
         "publication_expansion_stats": output_dir / "publication_expansion_stats.csv",
         "publication_expansion_summary": expansion_summary_path,
+        "publication_ticker_reconciliation": output_dir / "publication_ticker_reconciliation.json",
+        "publication_expansion_verification": output_dir / "publication_expansion_verification.json",
     }
     _write_json(artifacts["source_audit"], source_audit)
     raw_inventory.to_csv(artifacts["raw_inventory"], index=False)
@@ -518,8 +536,20 @@ def run(
         **target_digest,
         "counts": {
             "target_tickers": len(tickers),
-            "publication_covered_tickers": len(
-                set(tickers) & set(cached_publication_tickers(cache_root))
+            "enumerated_tickers": int(
+                expansion_summary.get("enumerated_ticker_count", len(tickers))
+            ),
+            "silently_unprocessed_tickers": int(
+                expansion_summary.get("silently_unprocessed_ticker_count", 0)
+            ),
+            "publication_metadata_tickers": int(
+                expansion_summary.get(
+                    "publication_metadata_ticker_count_after",
+                    len(cached_publication_tickers(cache_root)),
+                )
+            ),
+            "publication_covered_tickers": int(
+                expansion_summary.get("covered_target_ticker_count", 0)
             ),
             "non_empty_publication_mapping_tickers": int(
                 publications["ticker"].nunique()
@@ -532,6 +562,12 @@ def run(
             ),
             "roe_valid_tickers": int(
                 records.loc[records["metric"].eq("roe"), "ticker"].nunique()
+            ),
+            "joint_valid_tickers": int(
+                len(
+                    set(records.loc[records["metric"].eq("eps"), "ticker"])
+                    & set(records.loc[records["metric"].eq("roe"), "ticker"])
+                )
             ),
             "factor_matrix_ticker_columns": int(matrix["ticker"].nunique()),
             "normalized_records": len(records),
@@ -546,11 +582,22 @@ def run(
                 "full_publication_expansion_status",
                 "target_ticker_count",
                 "target_ticker_sha256",
+                "target_ticker_hash_format",
+                "enumerated_ticker_count",
+                "silently_unprocessed_ticker_count",
                 "existing_publication_ticker_count_before_run",
                 "missing_publication_ticker_count_before_run",
+                "publication_ticker_count_before",
+                "publication_metadata_ticker_count_before",
+                "missing_ticker_count_before",
+                "publication_metadata_ticker_count_after",
+                "publication_request_ticker_count",
+                "publication_ticker_count_after",
                 "planned_lookup_count",
                 "cache_hit_count",
                 "cache_miss_count",
+                "pre_lookup_skip_count",
+                "post_miss_skip_count",
                 "http_request_count",
                 "http_success_count",
                 "http_failure_count",
@@ -559,6 +606,9 @@ def run(
                 "covered_target_ticker_count",
                 "missing_target_ticker_count",
                 "target_publication_coverage_ratio",
+                "non_empty_publication_mapping_ticker_count",
+                "source_failure_ticker_count",
+                "failure_reason_counts",
             )
         },
         "coverage_summary": readiness["factor_gate_compatible_coverage"],
@@ -585,6 +635,7 @@ def run(
             str(path.relative_to(root)): sha256_file(path) for path in code_files
         },
         "artifact_sha256": artifact_hashes,
+        "manifest_self_hash_excluded": True,
         "test_commands": {
             "baseline": "PASS",
             "final_hard_gates": "PASS" if final_hard_gates else "PENDING_FINAL_RUN",

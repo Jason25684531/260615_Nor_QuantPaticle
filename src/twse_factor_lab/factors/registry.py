@@ -14,7 +14,7 @@ import re
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 
-FACTOR_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
+FACTOR_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 FACTOR_FAMILIES = frozenset(
     {
@@ -25,8 +25,10 @@ FACTOR_FAMILIES = frozenset(
         "FINANCIAL_HEALTH",
         "EFFICIENCY",
         "MOMENTUM",
+        "REVERSAL",
         "VOLUME_BEHAVIOR",
         "RISK_VOLATILITY",
+        "LIQUIDITY",
         "TECHNICAL",
     }
 )
@@ -146,6 +148,7 @@ _FUNDAMENTAL_IMPL = (
     "twse_factor_lab.factors.fundamental:build_fundamental_factor_frame"
 )
 _COMPOSER_IMPL = "twse_factor_lab.factors.composer:build_composite_factor_frame"
+_CONTROLLED_IMPL = "twse_factor_lab.factors.controlled:build_controlled_price_factors"
 _OHLCV_INPUTS = ["close_matrix", "high_matrix", "low_matrix", "volume_matrix"]
 _FUNDAMENTAL_INPUTS = ["date", "ticker", "metric", "value"]
 
@@ -190,6 +193,18 @@ _FUNDAMENTAL_FACTORS = [
      "Year-over-year monthly revenue growth."),
 ]
 
+_CONTROLLED_FACTORS = [
+    ("G2_EPS_YOY_CHANGE", "EPS YoY Change", "GROWTH", "fundamental", 365),
+    ("M0_MOMENTUM_20D", "Momentum 20D", "MOMENTUM", "ohlcv", 20),
+    ("M1_MOMENTUM_60D", "Momentum 60D", "MOMENTUM", "ohlcv", 60),
+    ("M2_NEAR_HIGH_252D", "Near High 252D", "MOMENTUM", "ohlcv", 252),
+    ("R1_REVERSAL_5D", "Reversal 5D", "REVERSAL", "ohlcv", 5),
+    ("L1_LOW_VOL_20D", "Low Volatility 20D", "RISK_VOLATILITY", "ohlcv", 20),
+    ("L3_DOWNSIDE_VOL_20D", "Downside Volatility 20D", "RISK_VOLATILITY", "ohlcv", 20),
+    ("L4_DOLLAR_VOLUME_20D", "Dollar Volume 20D", "LIQUIDITY", "ohlcv", 20),
+    ("L2_AMIHUD_20D", "Amihud 20D", "LIQUIDITY", "ohlcv", 20),
+]
+
 
 def build_default_registry() -> FactorRegistry:
     """Register metadata for the factors already implemented in this repo.
@@ -231,6 +246,27 @@ def build_default_registry() -> FactorRegistry:
                 implementation=_FUNDAMENTAL_IMPL,
                 version="1.0.0",
                 status="active",
+            )
+        )
+    for factor_id, name, family, domain, lookback in _CONTROLLED_FACTORS:
+        registry.register(
+            FactorDefinition(
+                factor_id=factor_id,
+                name=name,
+                family=family,
+                description=f"Controlled v4 candidate: {name}.",
+                direction="higher_is_better",
+                required_inputs=(
+                    list(_FUNDAMENTAL_INPUTS)
+                    if domain == "fundamental"
+                    else list(_OHLCV_INPUTS)
+                ),
+                data_domain=domain,
+                pit_required=domain == "fundamental",
+                implementation=_CONTROLLED_IMPL,
+                version="4.0.0",
+                status="active",
+                lookback_days=lookback,
             )
         )
     registry.register(

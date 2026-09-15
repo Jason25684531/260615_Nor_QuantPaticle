@@ -14,7 +14,14 @@ EXPERIMENT_STATUSES = frozenset(
     {"planned", "running", "completed", "failed", "aborted"}
 )
 EXPERIMENT_TYPES = frozenset(
-    {"factor_test", "strategy_backtest", "robustness", "attribution", "diagnostic"}
+    {
+        "factor_test",
+        "strategy_backtest",
+        "robustness",
+        "attribution",
+        "diagnostic",
+        "composite_factor_test",
+    }
 )
 
 

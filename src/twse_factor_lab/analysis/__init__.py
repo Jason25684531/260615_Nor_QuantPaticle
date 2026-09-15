@@ -14,6 +14,11 @@ from twse_factor_lab.analysis.attribution import (
     standardize_descriptor,
     standardize_descriptors,
 )
+from twse_factor_lab.analysis.composite_gate import (
+    CompositeCandidateGateConfig,
+    CompositeFactorGate,
+    CompositeFactorGateConfig,
+)
 from twse_factor_lab.analysis.factor_gate import (
     FactorDiagnostics,
     FactorGateConfig,
@@ -60,6 +65,9 @@ __all__ = [
     "FactorDiagnostics",
     "FactorGateConfig",
     "FactorGateError",
+    "CompositeCandidateGateConfig",
+    "CompositeFactorGate",
+    "CompositeFactorGateConfig",
     "NeutralizationResult",
     "assign_factor_quantiles",
     "build_forward_returns",
