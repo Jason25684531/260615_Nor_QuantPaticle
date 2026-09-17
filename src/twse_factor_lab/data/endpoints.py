@@ -6,6 +6,10 @@ ENDPOINTS: dict[str, str] = {
     "valuation": "exchangeReport/BWIBBU_ALL",
     "trading_calendar": "exchangeReport/TWTB4U",
     "valuation_daily": "exchangeReport/BWIBBU_d",
+    # Official source contract endpoints inspected from the live Swagger file.
+    "official_daily_snapshot": "exchangeReport/STOCK_DAY_ALL",
+    "official_listed_companies": "opendata/t187ap03_L",
+    "official_holiday_schedule": "holidaySchedule/holidaySchedule",
 }
 
 FUNDAMENTAL_ENDPOINTS: dict[str, str] = {
