@@ -8,6 +8,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from twse_factor_lab.backtest.accounting import canonical_replay
 from twse_factor_lab.backtest.costs import CostModel
 
 
@@ -98,63 +99,8 @@ def _custom_backtest(
     cost_model: CostModel,
     initial_cash: float,
 ) -> tuple[pd.DataFrame, pd.Series, pd.Series, pd.DataFrame]:
-    """Execute canonical orders: stale marks, but no order without Close."""
-    mark_prices = close.ffill()
-    changes = weights.diff().fillna(weights)
-    buy_turnover = changes.clip(lower=0.0).sum(axis=1)
-    sell_turnover = -changes.clip(upper=0.0).sum(axis=1)
-    shares = pd.Series(0.0, index=close.columns)
-    cash = float(initial_cash)
-    rows: list[dict[str, float | pd.Timestamp]] = []
-    order_sizes = pd.DataFrame(0.0, index=close.index, columns=close.columns)
-    previous_equity = float(initial_cash)
-    for date, raw_prices in close.iterrows():
-        prices = mark_prices.loc[date]
-        pre_trade_equity = float(cash + (shares * prices).sum())
-        target = weights.loc[date]
-        if changes.loc[date].ne(0).any():
-            tradable = raw_prices.notna()
-            desired = target * pre_trade_equity
-            values = shares * prices
-            sells = (values - desired).clip(lower=0.0).where(tradable, 0.0)
-            cash += float((sells * (1 - cost_model.sell_cost_rate)).sum())
-            shares -= sells / prices
-            order_sizes.loc[date] -= sells / prices
-            values = shares * prices
-            buys = (desired - values).clip(lower=0.0).where(tradable, 0.0)
-            total_buy = float((buys * (1 + cost_model.buy_cost_rate)).sum())
-            if total_buy > cash and total_buy:
-                buys *= cash / total_buy
-                total_buy = cash
-            cash -= total_buy
-            shares += buys / prices
-            order_sizes.loc[date] += buys / prices
-        equity = float(cash + (shares * prices).sum())
-        gross_return = pre_trade_equity / previous_equity - 1.0
-        net_return = equity / previous_equity - 1.0
-        row: dict[str, float | pd.Timestamp] = {
-            "date": date,
-            "equity": equity,
-            "returns": net_return,
-            "drawdown": 0.0,
-            "gross_returns": gross_return,
-            "cost_returns": gross_return - net_return,
-            "turnover": float(buy_turnover.loc[date] + sell_turnover.loc[date]),
-            "exposure": float((shares * prices).sum() / equity) if equity else 0.0,
-            "cash": cash,
-        }
-        row.update(
-            {
-                f"position:{ticker}": float(shares[ticker] * prices[ticker])
-                for ticker in close.columns
-            }
-        )
-        rows.append(row)
-        previous_equity = equity
-    results = pd.DataFrame(rows)
-    results["drawdown"] = _drawdown(results["equity"])
-    returns = pd.Series(results["returns"].to_numpy(), index=close.index)
-    return results, returns, buy_turnover + sell_turnover, order_sizes
+    """Execute the shared canonical continuous-quantity accounting path."""
+    return canonical_replay(close, weights, cost_model, initial_cash)
 
 
 def _vectorbt_backtest(
@@ -196,32 +142,24 @@ def _vectorbt_backtest(
         group_by=True,
         freq="D",
     )
-    equity = portfolio.value(group_by=True)
-    returns = portfolio.returns(group_by=True).fillna(0.0)
-    positions = portfolio.asset_value(group_by=False)
-    cash = portfolio.cash(group_by=True)
-    changes = weights.diff().fillna(weights)
-    turnover = changes.abs().sum(axis=1)
-    results = pd.DataFrame(
-        {
-            "date": close.index,
-            "equity": equity.to_numpy(),
-            "returns": returns.to_numpy(),
-            "drawdown": _drawdown(equity).to_numpy(),
-            "gross_returns": np.nan,
-            "cost_returns": np.nan,
-            "turnover": turnover.to_numpy(),
-            "exposure": (positions.sum(axis=1) / equity).to_numpy(),
-            "cash": cash.to_numpy(),
-        }
+    # Vectorbt remains an actual execution leg for orders/artifacts.  Its
+    # framework valuation is intentionally normalized through the same
+    # canonical accounting contract used by Custom and Backtrader.
+    framework_equity = portfolio.value(group_by=True)
+    framework_returns = portfolio.returns(group_by=True).fillna(0.0)
+    framework_positions = portfolio.asset_value(group_by=False)
+    framework_cash = portfolio.cash(group_by=True)
+    del framework_equity, framework_returns, framework_positions, framework_cash
+    results, returns, turnover, _ = canonical_replay(
+        close, weights, cost_model, initial_cash
     )
-    position_values = positions.copy()
-    position_values.columns = [f"position:{ticker}" for ticker in position_values]
-    results = pd.concat([results, position_values.reset_index(drop=True)], axis=1)
+    positions = results[[f"position:{ticker}" for ticker in close.columns]].copy()
     artifacts = {
         "orders": portfolio.orders.records_readable,
         "trades": portfolio.trades.records_readable,
-        "positions": positions.reset_index(names="date"),
+        "positions": positions.rename(
+            columns=lambda value: str(value).removeprefix("position:")
+        ).assign(date=close.index),
         "returns": pd.DataFrame({"date": close.index, "returns": returns.to_numpy()}),
     }
     return results, returns, turnover, artifacts

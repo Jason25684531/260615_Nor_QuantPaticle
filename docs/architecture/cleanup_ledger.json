@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "policy": "unknown blocks deletion; retained evidence is never moved or rewritten",
+  "candidates": [
+    {"path": "run_research_report.py", "status": "migrate", "evidence": "No test imports the CLI module; application owner and root adapter now preserve the invocation contract.", "owner": "twse_factor_lab.application.commands.research_report", "migration_target": "twse_factor_lab.application.commands.research_report"},
+    {"path": "run_backtest.py", "status": "retain", "evidence": "tests/test_backtest_pipeline.py imports public functions and README documents the compatibility hazard.", "owner": "run_backtest.py", "migration_target": "twse_factor_lab.application.commands.backtest"},
+    {"path": "run_rc1_offline_e2e.py", "status": "retain", "evidence": "Read-only RC1 replay and reproducibility evidence contract.", "owner": "run_rc1_offline_e2e.py", "migration_target": "twse_factor_lab.application.compatibility.rc1_replay"},
+    {"path": "run_research_cycle_v2.py", "status": "retain", "evidence": "Legacy cycle reproducibility path is explicitly retained in runner inventory.", "owner": "run_research_cycle_v2.py", "migration_target": "twse_factor_lab.application.compatibility.research_cycle_v2"},
+    {"path": "d4_acceptance_handoff.json", "status": "retain", "evidence": "Committed RC1/D4 handoff referenced by reproducibility and acceptance workflows.", "owner": "RC1 governance", "migration_target": null},
+    {"path": "final_acceptance_handoff.json", "status": "retain", "evidence": "Committed frozen D5 acceptance handoff and offline replay input.", "owner": "RC1 governance", "migration_target": null},
+    {"path": "final_artifact_inventory.json", "status": "retain", "evidence": "Committed inventory of canonical artifacts and hashes.", "owner": "RC1 governance", "migration_target": null},
+    {"path": "reproducibility_manifest.json", "status": "retain", "evidence": "Canonical reproducibility manifest required by repository-reproducibility.", "owner": "RC1 governance", "migration_target": null},
+    {"path": "research_trial_inventory.parquet", "status": "retain", "evidence": "Frozen statistical acceptance input; consumed by RC1 replay.", "owner": "RC1 governance", "migration_target": null},
+    {"path": "statistical_acceptance.parquet", "status": "retain", "evidence": "Frozen statistical acceptance evidence; consumed by RC1 replay.", "owner": "RC1 governance", "migration_target": null},
+    {"path": "strategy_freeze_manifest.json", "status": "retain", "evidence": "Frozen strategy parameters and artifact hashes.", "owner": "RC1 governance", "migration_target": null},
+    {"path": "trade_excursions.parquet", "status": "retain", "evidence": "Frozen trade-excursion evidence; replay asserts its row count.", "owner": "RC1 governance", "migration_target": null},
+    {"path": "v4-run.stderr.log", "status": "delete", "evidence": "Ignored transient log; no tracked import, command, CI, documentation, or manifest reference.", "owner": "transient outputs", "migration_target": null},
+    {"path": "v4-run.stdout.log", "status": "delete", "evidence": "Ignored zero-byte transient log; no tracked import, command, CI, documentation, or manifest reference.", "owner": "transient outputs", "migration_target": null}
+  ]
+}

@@ -34,6 +34,27 @@ python -m ruff check .
 openspec validate --all --strict
 ```
 
+## Repository architecture and command lifecycle
+
+Reusable research behavior lives under `src/twse_factor_lab/` by domain:
+`data`, `factors`, `portfolio`, `backtest`, `analysis`, `governance`,
+`acceptance`, and `reporting`. Thin orchestration owners live under
+`src/twse_factor_lab/application/commands/`; temporary legacy or frozen replay
+adapters live under `application/compatibility/` when needed. Operational
+one-off jobs remain under `jobs/`.
+
+`docs/architecture/runner_inventory.json` classifies every root runner and job
+as supported, compatibility, diagnostic, operational-job, or retired. The
+current supported research-cycle default is v3. The inventory and cleanup
+ledger are validated by `tests/test_architecture_boundaries.py`.
+
+The root `run_research_report.py` is now a compatibility adapter to the
+application command. Other root runners remain intentionally classified until
+their callers and retention obligations are migrated. In particular,
+`run_backtest.py` is retained because tests import it and it can overwrite
+canonical composite artifacts; use the canonical composite runner for the
+supported path.
+
 CI is offline/deterministic and runs install, Ruff, pytest, and OpenSpec strict
 validation. It does not require Yahoo, TWSE, MOPS, API keys, or private data.
 

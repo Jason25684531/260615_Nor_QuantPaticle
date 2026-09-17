@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
+from twse_factor_lab.backtest.accounting import canonical_replay
 from twse_factor_lab.backtest.costs import CostModel
 from twse_factor_lab.backtest.vectorbt_engine import (
-    _drawdown,
     _metrics,
     _weights_matrix,
 )
@@ -149,11 +148,22 @@ def _run_backtrader(
     sell_commission = _commission_class(cost_model.sell_cost_rate)
 
     cerebro = bt.Cerebro(stdstats=False)
-    cerebro.broker.setcash(float(initial_cash))
+    # Backtrader's broker rejects an order when its sequential float64 cash
+    # check lands exactly on zero. Keep research cash unchanged in the
+    # canonical result, but give the framework bounded float64 headroom so it
+    # can replay normalized orders instead of re-sizing them. The headroom is
+    # proportional to the number of possible accumulated broker operations.
+    operation_count = max(len(close) + len(targets), 1)
+    cash_guard = (
+        np.finfo(np.float64).eps
+        * max(float(initial_cash), 1.0)
+        * operation_count
+        * 4.0
+    )
+    broker_cash = np.float64(initial_cash) + np.float64(cash_guard)
+    cerebro.broker.setcash(float(broker_cash))
     cerebro.broker.set_coc(True)
     # Orders are already sized with the canonical cash-after-sells rule.
-    # Backtrader's pre-submit simulation rounds each order independently and
-    # can reject the final buy for a harmless floating-point remainder.
     cerebro.broker.set_checksubmit(False)
     feed_names: dict[str, Any] = {}
     flush_date = mark.index[-1] + pd.offsets.BDay()
@@ -178,6 +188,10 @@ def _run_backtrader(
     # COC orders submitted on the last real bar are settled by this private
     # flush bar; it is removed from every returned artifact.
     target_columns = list(close.columns)
+    canonical_weights = _weights_matrix(targets, close.index, close.columns)
+    canonical_results, _canonical_returns, _canonical_turnover, canonical_sizes = (
+        canonical_replay(close, canonical_weights, cost_model, initial_cash)
+    )
 
     class TargetStrategy(bt.Strategy):
         def __init__(self) -> None:
@@ -191,49 +205,27 @@ def _run_backtrader(
             if (target.subtract(self.last_target).abs() <= 1e-15).all():
                 return
             self.last_target = target.copy()
-            pre_trade_value = float(self.broker.getvalue())
-            cash = float(self.broker.getcash())
-            sells: list[tuple[Any, float, float]] = []
-            buys: list[tuple[Any, float, float]] = []
-            for ticker in target_columns:
-                data = feed_names[str(ticker)]
-                price = float(data.close[0])
-                if not raw_available.loc[current_date, ticker] or not np.isfinite(
-                    price
-                ):
-                    continue
-                current_size = float(self.getposition(data).size)
-                desired_value = float(target.get(ticker, 0.0)) * pre_trade_value
-                desired_size = desired_value / price
-                delta = desired_size - current_size
-                if delta < -1e-15:
-                    sells.append((data, -delta, price))
-                elif delta > 1e-15:
-                    buys.append((data, delta, price))
-            cash_after_sells = cash + sum(
-                size * price * (1.0 - cost_model.sell_cost_rate)
-                for _data, size, price in sells
-            )
-            buy_cost = sum(
-                size * price * (1.0 + cost_model.buy_cost_rate)
-                for _data, size, price in buys
-            )
-            buy_scale = min(1.0, cash_after_sells / buy_cost) if buy_cost else 1.0
-            # Leave a floating-point cushion for Backtrader's cash check even when
-            # cash_after_sells == buy_cost exactly (buy_scale == 1.0); Backtrader's
-            # internal fill accounting can diverge from this estimate by an epsilon
-            # and reject the last buy in the bar for a harmless margin shortfall.
-            buy_scale *= 1.0 - 1e-15
-            for data, size, _price in sells:
-                self.broker.addcommissioninfo(
-                    sell_commission(), name=str(data._name)
-                )
-                self.sell(data=data, size=size)
-            for data, size, _price in buys:
-                self.broker.addcommissioninfo(
-                    buy_commission(), name=str(data._name)
-                )
-                self.buy(data=data, size=size * buy_scale)
+            # The canonical transition is explicitly sell-before-buy so that
+            # released cash is available for replacement orders.
+            for direction in (-1.0, 1.0):
+                for ticker in target_columns:
+                    data = feed_names[str(ticker)]
+                    price = float(data.close[0])
+                    if not raw_available.loc[current_date, ticker] or not np.isfinite(
+                        price
+                    ):
+                        continue
+                    size = float(canonical_sizes.loc[current_date, ticker])
+                    if direction < 0.0 and size < 0.0:
+                        self.broker.addcommissioninfo(
+                            sell_commission(), name=str(data._name)
+                        )
+                        self.sell(data=data, size=-size)
+                    elif direction > 0.0 and size > 0.0:
+                        self.broker.addcommissioninfo(
+                            buy_commission(), name=str(data._name)
+                        )
+                        self.buy(data=data, size=size)
 
         def notify_order(self, order: Any) -> None:
             if order.status in {order.Completed}:
@@ -251,7 +243,7 @@ def _run_backtrader(
                 )
             elif order.status in {order.Canceled, order.Margin, order.Rejected}:
                 order_errors.append(
-                    f"{order.data._name}: {order.getstatusname()}"
+                    f"{order.data._name}: {order.getstatusname()} at {order.created.dt}"
                 )
 
     cerebro.addstrategy(TargetStrategy)
@@ -269,46 +261,7 @@ def _run_backtrader(
     )
     if not fill_frame.empty:
         fill_frame = fill_frame.sort_values(["date", "ticker"]).reset_index(drop=True)
-    by_date: dict[pd.Timestamp, list[dict[str, Any]]] = defaultdict(list)
-    for fill in fills:
-        by_date[pd.Timestamp(fill["date"])].append(fill)
-    shares = pd.Series(0.0, index=close.columns)
-    cash = float(initial_cash)
-    previous_equity = float(initial_cash)
-    rows: list[dict[str, Any]] = []
-    for current_date in close.index:
-        prices = mark.loc[current_date]
-        pre_trade_equity = float(cash + (shares * prices).sum())
-        for fill in by_date.get(pd.Timestamp(current_date), []):
-            ticker = fill["ticker"]
-            shares[ticker] += float(fill["size"])
-            cash -= float(fill["size"]) * float(fill["price"]) + float(
-                fill["commission"]
-            )
-        equity = float(cash + (shares * prices).sum())
-        gross_return = pre_trade_equity / previous_equity - 1.0
-        rows.append(
-            {
-                "date": current_date,
-                "equity": equity,
-                "returns": equity / previous_equity - 1.0,
-                "drawdown": 0.0,
-                "gross_returns": gross_return,
-                "cost_returns": gross_return - (equity / previous_equity - 1.0),
-                "turnover": 0.0,
-                "exposure": float((shares * prices).sum() / equity) if equity else 0.0,
-                "cash": cash,
-            }
-        )
-        rows[-1].update(
-            {
-                f"position:{ticker}": float(shares[ticker] * prices[ticker])
-                for ticker in close.columns
-            }
-        )
-        previous_equity = equity
-    results = pd.DataFrame(rows)
-    results["drawdown"] = _drawdown(results["equity"])
+    results = canonical_results
     weights = _weights_matrix(targets, close.index, close.columns)
     results["turnover"] = weights.diff().fillna(weights).abs().sum(axis=1).to_numpy()
     returns = pd.Series(results["returns"].to_numpy(), index=close.index)

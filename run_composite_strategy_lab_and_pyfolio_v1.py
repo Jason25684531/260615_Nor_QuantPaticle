@@ -18,7 +18,6 @@ import pandas as pd
 
 from twse_factor_lab.analysis.composite_strategy_lab import (
     BASE_COST,
-    BUFFER_HOLD_RANK,
     COMPONENTS,
     TOP_N,
     WEIGHTS,
@@ -33,17 +32,19 @@ from twse_factor_lab.analysis.composite_strategy_lab import (
 from twse_factor_lab.backtest.costs import CostModel
 from twse_factor_lab.backtest.robustness import compute_metrics
 from twse_factor_lab.backtest.vectorbt_engine import run_weight_backtest
-from twse_factor_lab.factors.controlled import build_controlled_price_factors
 from twse_factor_lab.governance.isolation import assert_write_allowed
 from twse_factor_lab.portfolio.breadth import (
     breadth_to_exposure,
     compute_market_breadth,
 )
-from twse_factor_lab.portfolio.rebalance import build_rebalance_calendar
-from twse_factor_lab.portfolio.selection import build_topn_positions
 from twse_factor_lab.portfolio.weights import (
     apply_gross_exposure,
-    build_equal_weight_portfolio,
+)
+from twse_factor_lab.strategy.composite_replay import (
+    build_composite as _composite,
+)
+from twse_factor_lab.strategy.composite_replay import (
+    build_targets as _targets,
 )
 
 ROOT = Path(__file__).resolve().parent
@@ -132,45 +133,6 @@ def verify_admission_input() -> tuple[dict[str, Any], dict[str, Any]]:
     ):
         raise RuntimeError("COMPOSITE_DEFINITION_SHA_MISMATCH")
     return manifest, definition
-
-
-def _composite(
-    close: pd.DataFrame, volume: pd.DataFrame
-) -> tuple[pd.DataFrame, dict[str, pd.DataFrame]]:
-    factors = build_controlled_price_factors(close, volume)
-    matrices = {name: factors[name].reindex_like(close) for name in COMPONENTS}
-    ranked = {name: matrix.rank(axis=1, pct=True) for name, matrix in matrices.items()}
-    complete = ranked[COMPONENTS[0]].notna() & ranked[COMPONENTS[1]].notna()
-    score = (ranked[COMPONENTS[0]] * 0.5 + ranked[COMPONENTS[1]] * 0.5).where(complete)
-    return score, matrices
-
-
-def _targets(
-    score: pd.DataFrame, *, rebalance: str, buffer_on: bool
-) -> tuple[pd.DataFrame, pd.DataFrame]:
-    frame = (
-        score.stack(future_stack=True)
-        .rename("composite_score")
-        .rename_axis(["date", "ticker"])
-        .reset_index()
-    )
-    frame["composite_type"] = "composite_l2_l4_5050"
-    frame["is_snapshot_component_used"] = False
-    calendar = build_rebalance_calendar(
-        score.index, frequency=rebalance, execution_lag_days=1
-    )
-    positions = build_topn_positions(
-        frame,
-        top_n=TOP_N,
-        factor_name="composite_l2_l4_5050",
-        rebalance_dates=pd.DatetimeIndex(calendar["signal_date"]),
-        hold_until_drop=buffer_on,
-        drop_rank_buffer=BUFFER_HOLD_RANK if buffer_on else 0,
-        rebalance_frequency=rebalance,
-    )
-    return build_equal_weight_portfolio(
-        positions, rebalance_calendar=calendar
-    ), calendar
 
 
 def _run_one(
