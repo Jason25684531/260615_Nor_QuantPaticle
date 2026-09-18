@@ -58,6 +58,42 @@ supported path.
 CI is offline/deterministic and runs install, Ruff, pytest, and OpenSpec strict
 validation. It does not require Yahoo, TWSE, MOPS, API keys, or private data.
 
+## Command lifecycle and safe entry points
+
+Use the application command as the supported interface when one exists. Root
+`run_*.py` files are retained as compatibility adapters, frozen replay entry
+points, or explicitly pending migration cohorts. The runner inventory is the
+source of truth for lifecycle, owner, output namespace, and retirement status;
+do not infer support from a filename alone.
+
+| Lifecycle | Current command index | Output policy |
+| --- | --- | --- |
+| Supported | `run_data_pipeline.py`, `run_fundamental_pipeline.py`, `run_factor_pipeline.py`, `run_factor_analysis.py`, `run_factor_tearsheet.py`, `run_composite_strategy.py`, `run_final_acceptance.py`, `run_performance_report.py`, `run_historical_research_cycle.py`, `run_research_cycle_v3.py`, `run_robustness.py` | Existing legacy-canonical paths remain until a cohort migration proves equivalent package output. |
+| Compatibility | `run_research_report.py`, `run_backtest.py`, `run_research_cycle_v2.py`, `run_rc1_offline_e2e.py` | Preserve documented arguments and callers; RC1 replay is read-only. `run_research_report.py` delegates to `twse_factor_lab.application.commands.research_report`. |
+| Diagnostic | `run_backtest_diagnostics.py`, `run_engine_parity_audit_v1.py`, `run_composite_factor_admission_v1.py`, `run_composite_strategy_lab_and_pyfolio_v1.py`, `run_controlled_factor_discovery_v4.py`, `run_final_strategy_validation_v1.py`, `run_final_strategy_validation_v2.py`, `run_final_strategy_validation_v3.py`, `run_fresh_oos_validation_v1.py`, `run_fundamental_pit_coverage.py` | Non-canonical evidence only; diagnostic results never promote a strategy automatically. |
+| Operational | `run_update_market_data.py`, `run_shadow_daily.py`, `run_shadow_runtime_s3.py`, `run_official_migration.py`, `run_project_closure.py`, `jobs/run_fundamental_pit_expansion.py` | Runtime/operation writes are gated and fail closed. |
+
+## Artifact ownership
+
+```text
+repository root              immutable RC1 handoffs and manifests only
+data/processed/              legacy RC1 canonical artifacts; no new active writes
+data/research/<cycle>/       reproducible active research evidence
+data/diagnostics/<run>/      non-canonical diagnostic evidence
+data/runtime/<run>/          shadow and operational state
+reports/{final,rc1}/         frozen human-readable evidence
+reports/research/<cycle>/    active research reports
+outputs/                     explicitly transient, ignored output only
+```
+
+`docs/architecture/artifact_inventory.json` records effective ownership and
+retention. Before moving or deleting a file, check
+`docs/architecture/cleanup_ledger.json`: unknown and frozen items stay in
+place, and every relocation needs references, hash impact, rollback, and
+verification evidence. `docs/architecture/runner_cohort_matrix.json` records
+why a runner is pending migration; empty application command modules are not
+created just to satisfy a planned target.
+
 ## Legacy RC1 (Frozen)
 
 ### Current Status

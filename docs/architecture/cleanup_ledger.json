@@ -1,8 +1,17 @@
 {
   "schema_version": 1,
   "policy": "unknown blocks deletion; retained evidence is never moved or rewritten",
+  "protected_paths": [
+    {"path": "run_rc1_offline_e2e.py", "evidence": "RC1 read-only replay entry point", "action": "no-move-no-delete"},
+    {"path": "run_engine_parity_audit_v1.py", "evidence": "engine parity code hash in audit evidence", "action": "no-move-no-delete"},
+    {"path": "run_final_strategy_validation_v2.py", "evidence": "v2 code hash in frozen validation evidence", "action": "no-move-no-delete"},
+    {"path": "run_final_strategy_validation_v3.py", "evidence": "v3 code hash in frozen validation evidence", "action": "no-move-no-delete"},
+    {"path": "data/processed/", "evidence": "RC1 canonical artifact namespace", "action": "no-move-no-delete"},
+    {"path": "reports/final/", "evidence": "RC1 final report namespace", "action": "no-move-no-delete"},
+    {"path": "reports/rc1/", "evidence": "RC1 replay report namespace", "action": "no-move-no-delete"}
+  ],
   "candidates": [
-    {"path": "run_research_report.py", "status": "migrate", "evidence": "No test imports the CLI module; application owner and root adapter now preserve the invocation contract.", "owner": "twse_factor_lab.application.commands.research_report", "migration_target": "twse_factor_lab.application.commands.research_report"},
+    {"path": "run_research_report.py", "status": "migrate", "evidence": "Application owner and root adapter preserve the invocation contract; adapter contract is covered by architecture tests.", "owner": "twse_factor_lab.application.commands.research_report", "migration_target": "twse_factor_lab.application.commands.research_report", "relocation": {"source": "run_research_report.py", "target": "src/twse_factor_lab/application/commands/research_report.py", "hash_impact": "root adapter hash changes; frozen RC1 hashes unaffected", "rollback": "restore root implementation and inventory record", "verification": "tests/test_architecture_boundaries.py"}},
     {"path": "run_backtest.py", "status": "retain", "evidence": "tests/test_backtest_pipeline.py imports public functions and README documents the compatibility hazard.", "owner": "run_backtest.py", "migration_target": "twse_factor_lab.application.commands.backtest"},
     {"path": "run_rc1_offline_e2e.py", "status": "retain", "evidence": "Read-only RC1 replay and reproducibility evidence contract.", "owner": "run_rc1_offline_e2e.py", "migration_target": "twse_factor_lab.application.compatibility.rc1_replay"},
     {"path": "run_research_cycle_v2.py", "status": "retain", "evidence": "Legacy cycle reproducibility path is explicitly retained in runner inventory.", "owner": "run_research_cycle_v2.py", "migration_target": "twse_factor_lab.application.compatibility.research_cycle_v2"},

@@ -12,8 +12,39 @@ from typing import Any
 LIFECYCLES = frozenset(
     {"supported", "compatibility", "diagnostic", "operational-job", "retired"}
 )
-CLEANUP_STATUSES = frozenset(
-    {"retain", "migrate", "deprecate", "delete", "unknown"}
+CLEANUP_STATUSES = frozenset({"retain", "migrate", "deprecate", "delete", "unknown"})
+RETENTION_CLASSES = frozenset(
+    {
+        "frozen",
+        "canonical",
+        "legacy",
+        "research",
+        "diagnostic",
+        "runtime",
+        "transient",
+        "unknown",
+    }
+)
+WRITE_AUTHORITIES = frozenset(
+    {
+        "replay",
+        "legacy-runner",
+        "application-command",
+        "domain",
+        "transient",
+        "none",
+        "unknown",
+    }
+)
+COHORT_STATUSES = frozenset(
+    {
+        "pilot",
+        "frozen-replay",
+        "compatibility-pending",
+        "supported-pending",
+        "diagnostic-pending",
+        "operational-pending",
+    }
 )
 RETAINED_EVIDENCE = frozenset(
     {
@@ -43,6 +74,11 @@ class RunnerRecord:
     compatibility_status: str
     migration_target: str | None
     notes: str | None
+    retention_class: str
+    write_authority: str
+    retirement_condition: str
+    cohort: str
+    frozen_preservation: bool
 
 
 def _json(path: Path) -> Any:
@@ -60,6 +96,27 @@ def load_runner_inventory(path: str | Path) -> tuple[RunnerRecord, ...]:
         )
     records: list[RunnerRecord] = []
     seen: set[str] = set()
+    matrix_by_path: dict[str, dict[str, Any]] = {}
+    matrix_path = Path(path).parent / "runner_cohort_matrix.json"
+    if matrix_path.is_file():
+        matrix_payload = _json(matrix_path)
+        matrix_entries = (
+            matrix_payload.get("runners", [])
+            if isinstance(matrix_payload, dict)
+            else []
+        )
+        if isinstance(matrix_entries, list):
+            matrix_by_path = {
+                str(item.get("path", "")).replace("\\", "/"): item
+                for item in matrix_entries
+                if isinstance(item, dict)
+            }
+    defaults = payload.get("metadata_defaults", {})
+    if not isinstance(defaults, dict):
+        raise ArchitectureValidationError("metadata_defaults must be an object")
+    retention_defaults = defaults.get("retention_class_by_lifecycle", {})
+    authority_defaults = defaults.get("write_authority_by_lifecycle", {})
+    review_defaults = defaults.get("retirement_condition_by_lifecycle", {})
     for raw in payload["runners"]:
         if not isinstance(raw, dict):
             raise ArchitectureValidationError(
@@ -80,6 +137,29 @@ def load_runner_inventory(path: str | Path) -> tuple[RunnerRecord, ...]:
                 f"invalid lifecycle {lifecycle!r} for {path_value}"
             )
         seen.add(path_value)
+        retention_class = str(
+            raw.get("retention_class") or retention_defaults.get(lifecycle, "unknown")
+        )
+        write_authority = str(
+            raw.get("write_authority") or authority_defaults.get(lifecycle, "unknown")
+        )
+        retirement_condition = str(
+            raw.get("retirement_condition") or review_defaults.get(lifecycle, "")
+        )
+        matrix_entry = matrix_by_path.get(path_value, {})
+        cohort = str(raw.get("cohort") or matrix_entry.get("cohort") or "unclassified")
+        if retention_class not in RETENTION_CLASSES:
+            raise ArchitectureValidationError(
+                f"invalid retention class {retention_class!r} for {path_value}"
+            )
+        if write_authority not in WRITE_AUTHORITIES:
+            raise ArchitectureValidationError(
+                f"invalid write authority {write_authority!r} for {path_value}"
+            )
+        if not retirement_condition:
+            raise ArchitectureValidationError(
+                f"runner entry lacks retirement condition: {path_value}"
+            )
         records.append(
             RunnerRecord(
                 path=path_value,
@@ -98,6 +178,13 @@ def load_runner_inventory(path: str | Path) -> tuple[RunnerRecord, ...]:
                     else None
                 ),
                 notes=str(raw["notes"]) if raw.get("notes") else None,
+                retention_class=retention_class,
+                write_authority=write_authority,
+                retirement_condition=retirement_condition,
+                cohort=cohort,
+                frozen_preservation=bool(
+                    raw.get("frozen_preservation", cohort == "frozen-replay")
+                ),
             )
         )
     return tuple(records)
@@ -130,6 +217,55 @@ def validate_runner_inventory(
         if stale:
             details.append(f"missing files: {stale}")
         raise ArchitectureValidationError("; ".join(details))
+    matrix_path = root / "docs" / "architecture" / "runner_cohort_matrix.json"
+    if matrix_path.is_file():
+        matrix = _json(matrix_path)
+        entries = matrix.get("runners") if isinstance(matrix, dict) else None
+        if not isinstance(entries, list):
+            raise ArchitectureValidationError(
+                "runner cohort matrix must contain runners"
+            )
+        matrix_paths = {
+            str(item.get("path", "")).replace("\\", "/")
+            for item in entries
+            if isinstance(item, dict)
+        }
+        if matrix_paths != actual:
+            raise ArchitectureValidationError(
+                "runner cohort matrix mismatch: "
+                f"missing={sorted(actual - matrix_paths)}, "
+                f"stale={sorted(matrix_paths - actual)}"
+            )
+        for item in entries:
+            if not isinstance(item, dict) or item.get("cohort") not in COHORT_STATUSES:
+                raise ArchitectureValidationError(
+                    "runner cohort entries require a valid cohort"
+                )
+            if not item.get("blockers"):
+                raise ArchitectureValidationError(
+                    "runner cohort entries require blockers/evidence"
+                )
+    elif root.resolve() == Path(inventory_path).resolve().parents[2]:
+        raise ArchitectureValidationError(
+            f"missing runner cohort matrix: {matrix_path}"
+        )
+    for record in records:
+        if record.migration_target and not _module_exists(
+            root, record.migration_target
+        ):
+            raise ArchitectureValidationError(
+                "migration target does not exist: "
+                f"{record.path} -> {record.migration_target}"
+            )
+        if record.compatibility_status == "adapter":
+            imports = {module for _, module in _iter_imports(root / record.path)}
+            if not record.migration_target or record.migration_target not in imports:
+                raise ArchitectureValidationError(
+                    f"compatibility adapter does not delegate to target: {record.path}"
+                )
+        if record.lifecycle != "retired" and record.cohort == "unclassified":
+            raise ArchitectureValidationError(f"runner lacks cohort: {record.path}")
+    validate_frozen_write_policy(records)
     supported_owners = [
         record.owner for record in records if record.lifecycle == "supported"
     ]
@@ -138,6 +274,38 @@ def validate_runner_inventory(
             "duplicate owning implementation for supported runner"
         )
     return records
+
+
+def _module_exists(root: Path, module: str) -> bool:
+    if not module.startswith("twse_factor_lab."):
+        return False
+    relative = Path("src") / Path(*module.split("."))
+    return (root / relative.with_suffix(".py")).is_file() or (
+        root / relative / "__init__.py"
+    ).is_file()
+
+
+def validate_frozen_write_policy(records: Iterable[RunnerRecord]) -> None:
+    for record in records:
+        if not record.migration_target or not record.migration_target.startswith(
+            "twse_factor_lab.application.commands."
+        ):
+            continue
+        if record.lifecycle not in {
+            "supported",
+            "compatibility",
+            "diagnostic",
+            "operational-job",
+        }:
+            raise ArchitectureValidationError(
+                f"command target has invalid lifecycle: {record.path}"
+            )
+        if record.output_namespace.startswith(
+            ("data/processed/", "reports/final/", "reports/rc1/")
+        ):
+            raise ArchitectureValidationError(
+                f"active command targets frozen namespace: {record.path}"
+            )
 
 
 def _iter_imports(path: Path) -> Iterable[tuple[int, str]]:
@@ -186,6 +354,22 @@ def validate_cleanup_ledger(path: str | Path) -> None:
             "cleanup ledger must contain a candidates list"
         )
     seen: set[str] = set()
+    protected = payload.get("protected_paths", [])
+    if not isinstance(protected, list):
+        raise ArchitectureValidationError("protected_paths must be a list")
+    for item in protected:
+        if (
+            not isinstance(item, dict)
+            or not item.get("path")
+            or not item.get("evidence")
+        ):
+            raise ArchitectureValidationError(
+                "protected paths require path and evidence"
+            )
+        if item.get("action") != "no-move-no-delete":
+            raise ArchitectureValidationError(
+                f"protected path lacks no-move-no-delete action: {item.get('path')}"
+            )
     for raw in payload["candidates"]:
         if not isinstance(raw, dict) or not raw.get("path") or not raw.get("status"):
             raise ArchitectureValidationError("cleanup entries require path and status")
@@ -205,6 +389,13 @@ def validate_cleanup_ledger(path: str | Path) -> None:
             raise ArchitectureValidationError(
                 f"delete candidate lacks evidence: {candidate}"
             )
+        if status == "migrate":
+            relocation = raw.get("relocation")
+            required = {"source", "target", "hash_impact", "rollback", "verification"}
+            if not isinstance(relocation, dict) or not required <= relocation.keys():
+                raise ArchitectureValidationError(
+                    f"migrate candidate lacks relocation evidence: {candidate}"
+                )
         seen.add(candidate)
 
 
@@ -214,7 +405,53 @@ def run_architecture_checks(root: str | Path) -> None:
         root, root / "docs" / "architecture" / "runner_inventory.json"
     )
     validate_cleanup_ledger(root / "docs" / "architecture" / "cleanup_ledger.json")
+    validate_artifact_inventory(
+        root / "docs" / "architecture" / "artifact_inventory.json"
+    )
     validate_dependency_direction(root)
+
+
+def validate_artifact_inventory(path: str | Path) -> None:
+    payload = _json(Path(path))
+    entries = payload.get("namespaces") if isinstance(payload, dict) else None
+    if not isinstance(entries, list) or not entries:
+        raise ArchitectureValidationError("artifact inventory must contain namespaces")
+    required = {
+        "path",
+        "classification",
+        "owner",
+        "retention",
+        "write_authority",
+        "evidence",
+    }
+    seen: set[str] = set()
+    for entry in entries:
+        if not isinstance(entry, dict) or not required <= entry.keys():
+            raise ArchitectureValidationError(
+                "artifact namespace entries lack ownership metadata"
+            )
+        path_value = str(entry["path"]).replace("\\", "/")
+        if path_value in seen:
+            raise ArchitectureValidationError(
+                f"duplicate artifact namespace: {path_value}"
+            )
+        if entry["classification"] not in {
+            "frozen",
+            "canonical",
+            "research",
+            "diagnostic",
+            "runtime",
+            "transient",
+            "unknown",
+        }:
+            raise ArchitectureValidationError(
+                f"invalid artifact classification: {path_value}"
+            )
+        if entry["classification"] == "frozen" and entry["write_authority"] != "replay":
+            raise ArchitectureValidationError(
+                f"frozen artifact must be replay-owned: {path_value}"
+            )
+        seen.add(path_value)
 
 
 __all__ = [
@@ -226,6 +463,8 @@ __all__ = [
     "run_architecture_checks",
     "tracked_runner_paths",
     "validate_cleanup_ledger",
+    "validate_artifact_inventory",
     "validate_dependency_direction",
+    "validate_frozen_write_policy",
     "validate_runner_inventory",
 ]

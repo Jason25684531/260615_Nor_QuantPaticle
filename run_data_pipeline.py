@@ -9,8 +9,11 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-import yaml
 
+from twse_factor_lab.application.support import load_config, resolve_path
+from twse_factor_lab.application.support import (
+    project_root_for_config as project_root_for_config,  # noqa: F401
+)
 from twse_factor_lab.data.manifest import append_manifest_entries, build_manifest_entry
 from twse_factor_lab.data.normalizer import (
     drop_invalid_ohlcv_rows,
@@ -36,25 +39,6 @@ class OhlcvSettings:
     retry: int
     sleep_seconds: float
     fail_fast: bool
-
-
-def load_config(path: str | Path) -> dict[str, Any]:
-    with Path(path).open("r", encoding="utf-8") as handle:
-        return yaml.safe_load(handle)
-
-
-def project_root_for_config(config_path: str | Path) -> Path:
-    path = Path(config_path).resolve()
-    if path.parent.name == "config":
-        return path.parent.parent
-    return path.parent
-
-
-def resolve_path(config_path: str | Path, configured_path: str | Path) -> Path:
-    path = Path(configured_path)
-    if path.is_absolute():
-        return path
-    return project_root_for_config(config_path) / path
 
 
 def missing_ratio(frame: pd.DataFrame) -> dict[str, float]:

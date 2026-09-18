@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "policy": "Namespace classification is conservative; unknown and frozen artifacts stay in place.",
+  "namespaces": [
+    {"path": "d4_acceptance_handoff.json", "classification": "frozen", "owner": "RC1 governance", "retention": "immutable", "write_authority": "replay", "evidence": "reproducibility_manifest.json and RC1 replay"},
+    {"path": "final_acceptance_handoff.json", "classification": "frozen", "owner": "RC1 governance", "retention": "immutable", "write_authority": "replay", "evidence": "final artifact inventory and RC1 replay"},
+    {"path": "final_artifact_inventory.json", "classification": "frozen", "owner": "RC1 governance", "retention": "immutable", "write_authority": "replay", "evidence": "canonical artifact inventory"},
+    {"path": "reproducibility_manifest.json", "classification": "frozen", "owner": "RC1 governance", "retention": "immutable", "write_authority": "replay", "evidence": "repository reproducibility contract"},
+    {"path": "research_trial_inventory.parquet", "classification": "frozen", "owner": "RC1 governance", "retention": "immutable", "write_authority": "replay", "evidence": "frozen statistical acceptance input"},
+    {"path": "statistical_acceptance.parquet", "classification": "frozen", "owner": "RC1 governance", "retention": "immutable", "write_authority": "replay", "evidence": "frozen statistical acceptance evidence"},
+    {"path": "strategy_freeze_manifest.json", "classification": "frozen", "owner": "RC1 governance", "retention": "immutable", "write_authority": "replay", "evidence": "frozen strategy parameters and hashes"},
+    {"path": "trade_excursions.parquet", "classification": "frozen", "owner": "RC1 governance", "retention": "immutable", "write_authority": "replay", "evidence": "frozen trade-excursion replay assertion"},
+    {"path": "data/processed/", "classification": "canonical", "owner": "legacy RC1 pipeline", "retention": "canonical", "write_authority": "legacy-runner", "evidence": "README and final artifact inventory"},
+    {"path": "data/research/", "classification": "research", "owner": "research-cycle root runners pending migration", "retention": "cycle-scoped", "write_authority": "legacy-runner", "evidence": "governance freeze manifests and runner cohort matrix"},
+    {"path": "data/research/fundamental-production-final-v1/", "classification": "research", "owner": "twse_factor_lab.application.commands.fundamental_final", "retention": "change-scoped", "write_authority": "application-command", "evidence": "final Fundamental runtime gate and OpenSpec change"},
+    {"path": "data/processed/diagnostics/", "classification": "diagnostic", "owner": "diagnostic runners", "retention": "diagnostic", "write_authority": "legacy-runner", "evidence": "runner inventory"},
+    {"path": "data/runtime/", "classification": "runtime", "owner": "operational jobs", "retention": "operational", "write_authority": "domain", "evidence": "shadow and migration runners"},
+    {"path": "reports/final/", "classification": "frozen", "owner": "RC1 governance", "retention": "immutable", "write_authority": "replay", "evidence": "README and acceptance reports"},
+    {"path": "reports/rc1/", "classification": "frozen", "owner": "RC1 governance", "retention": "immutable", "write_authority": "replay", "evidence": "clean-install and offline replay reports"},
+    {"path": "reports/research/", "classification": "research", "owner": "research reporting", "retention": "cycle-scoped", "write_authority": "application-command", "evidence": "research report runner"},
+    {"path": "outputs/", "classification": "transient", "owner": "local workflows", "retention": "ignored", "write_authority": "transient", "evidence": ".gitignore and runner references"}
+  ]
+}

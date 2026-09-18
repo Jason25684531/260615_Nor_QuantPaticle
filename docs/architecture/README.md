@@ -21,6 +21,14 @@ the workflow, and report results. A protocol or abstract base is introduced
 only when the application genuinely selects between interchangeable
 implementations; otherwise a function or value object is preferred.
 
+The migration is incremental. `research_report` is the current application
+command pilot and `run_research_report.py` is its tested compatibility
+adapter. The remaining root runners are not assumed to have package owners
+merely because an inventory migration target was once planned: their actual
+cohort, blockers, and frozen/hash-bound exclusions are recorded in
+`runner_cohort_matrix.json`. Empty command modules are not created to make the
+inventory look complete.
+
 ## Runner lifecycle
 
 `runner_inventory.json` is the source of truth for root `run_*.py` files and
@@ -28,6 +36,19 @@ operational jobs. The current default research cycle is v3. Root runners that
 are still imported or needed for frozen replay remain compatibility paths until
 their documented retention period expires. Diagnostic and experimental runners
 are not part of the supported canonical path.
+
+`artifact_inventory.json` is the source of truth for logical artifact
+ownership. Existing `data/processed/`, `reports/final/`, and `reports/rc1/`
+content remains in place when it is canonical or frozen. New active output is
+classified before it is routed to research, diagnostics, runtime, or transient
+namespaces. `cleanup_ledger.json` records evidence, rollback, and verification
+for every move/delete candidate; unknown candidates are left untouched.
+
+For atomic material writes, reuse `data.parquet_store.ParquetStore.save` for
+Parquet frames and the existing runtime/governance atomic JSON helpers where
+their namespace contract applies. The cleanup does not add a generic writer
+base class and does not merge helpers whose validation or freeze semantics
+differ.
 
 ## Cleanup policy
 

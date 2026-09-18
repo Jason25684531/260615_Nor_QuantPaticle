@@ -7,16 +7,12 @@ import json
 from collections.abc import Sequence
 from pathlib import Path
 
+from twse_factor_lab.application.support import repository_root
 from twse_factor_lab.reporting.runner import generate_research_report
 
 
 def _repository_root() -> Path:
-    """Find the checkout root without depending on the current directory."""
-
-    for candidate in Path(__file__).resolve().parents:
-        if (candidate / "pyproject.toml").exists():
-            return candidate
-    return Path.cwd()
+    return repository_root(__file__)
 
 
 def build_parser() -> argparse.ArgumentParser:
