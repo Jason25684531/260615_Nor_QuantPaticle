@@ -1,0 +1,1 @@
+2025-06-30 | fundamental_g2g3_top5_reb60_score_weighted_v1 | PASS | rebalance=True | 6768:score=1.000000:weight=0.211921, 3617:score=0.958333:weight=0.203091, 1419:score=0.947917:weight=0.200883, 2208:score=0.916667:weight=0.194260, 2421:score=0.895833:weight=0.189845

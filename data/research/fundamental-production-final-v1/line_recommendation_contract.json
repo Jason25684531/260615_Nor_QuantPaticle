@@ -1,0 +1,13 @@
+{
+  "deployed": false,
+  "fields": [
+    "date",
+    "strategy_status",
+    "top5",
+    "score",
+    "weight",
+    "rebalance",
+    "data_health"
+  ],
+  "status": "PASS"
+}

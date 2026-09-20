@@ -1,0 +1,31 @@
+{
+  "date_list": [
+    "2019-03-29",
+    "2019-06-28",
+    "2020-03-31",
+    "2020-09-30",
+    "2021-03-31",
+    "2021-12-30",
+    "2022-06-30",
+    "2022-12-30",
+    "2023-06-30",
+    "2023-12-29",
+    "2024-06-28",
+    "2025-06-30"
+  ],
+  "empty_output_parity_accepted": false,
+  "factor_mismatches": 0,
+  "max_numerical_diff": 0.0,
+  "production_rows": 318,
+  "rank_mismatches": 0,
+  "reason": "ZERO_MISMATCH",
+  "rebalance_mismatches": 0,
+  "research_rows": 318,
+  "score_mismatches": 0,
+  "selection_mismatches": 0,
+  "shadow_rows": 318,
+  "snapshot_count": 12,
+  "source_runtime_available": true,
+  "status": "PASS",
+  "target_mismatches": 0
+}

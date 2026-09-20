@@ -1,0 +1,6 @@
+{
+  "broker_order_submission": "DISABLED",
+  "isolated_namespace": "isolated-validation",
+  "recommendation_count": 5,
+  "status": "PASS"
+}

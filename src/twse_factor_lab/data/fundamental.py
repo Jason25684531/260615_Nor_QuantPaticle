@@ -353,7 +353,9 @@ class FundamentalClient:
         )
         parsed = parse_mops_statement(html, year=year, season=season)
         metrics = (
-            {"revenue", "net_income", "eps"} if statement == "income" else {"equity"}
+            {"revenue", "operating_income", "net_income", "eps"}
+            if statement == "income"
+            else {"equity"}
         )
         return parsed.loc[parsed["metric"].isin(metrics)].reset_index(drop=True)
 
@@ -506,7 +508,7 @@ def _flatten(columns: pd.Index) -> list[str]:
 def _column(frame: pd.DataFrame, terms: tuple[str, ...]) -> str | None:
     for column in frame.columns:
         text = re.sub(r"\s+", "", str(column)).lower()
-        if any(term.lower() in text for term in terms):
+        if any(re.sub(r"\s+", "", term).lower() in text for term in terms):
             return str(column)
     return None
 
@@ -516,12 +518,18 @@ def parse_mops_statement(html: str, *, year: int, season: int) -> pd.DataFrame:
 
     rows: list[dict[str, Any]] = []
     mappings = {
+        "operating_income": (
+            "營業利益",
+            "營業淨利",
+            "operating income",
+        ),
         "revenue": ("營業收入", "收入合計", "revenue"),
         "net_income": ("本期淨利", "本期淨", "淨利", "net income"),
         "eps": ("基本每股盈餘", "基本每股", "eps"),
         "equity": ("權益總計", "權益", "equity"),
     }
     common_aliases = {
+        "operating_income": ("營業利益", "營業淨利", "operating income"),
         "revenue": ("營業收入", "收入"),
         "net_income": ("本期淨利", "淨利"),
         "eps": ("基本每股盈餘", "每股盈餘"),

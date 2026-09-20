@@ -1,0 +1,14 @@
+{
+  "deployed": false,
+  "fields": [
+    "strategy_id",
+    "as_of_date",
+    "top5",
+    "score",
+    "target_weight",
+    "action",
+    "data_status",
+    "generated_at"
+  ],
+  "status": "PASS"
+}

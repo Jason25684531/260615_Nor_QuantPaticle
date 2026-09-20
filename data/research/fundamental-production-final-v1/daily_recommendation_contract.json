@@ -1,0 +1,26 @@
+{
+  "actions": [
+    "ENTER",
+    "HOLD",
+    "EXIT",
+    "NO_REBALANCE"
+  ],
+  "broker_order_submission": "DISABLED",
+  "columns": [
+    "run_id",
+    "as_of_date",
+    "strategy_id",
+    "strategy_fingerprint",
+    "ticker",
+    "score",
+    "rank",
+    "selected",
+    "target_weight",
+    "action",
+    "rebalance_due",
+    "reason",
+    "input_sha",
+    "provider_sha",
+    "created_at"
+  ]
+}

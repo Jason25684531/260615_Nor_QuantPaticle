@@ -1,0 +1,13 @@
+{
+  "factor_implementation_reused": true,
+  "input_dataset": "data/processed/fundamental_pit_v2/fundamental_records.parquet",
+  "reason": "PASS",
+  "required_factor_inputs": [
+    "operating_income",
+    "eps"
+  ],
+  "source_runtime_available": true,
+  "status": "PASS",
+  "strategy_fingerprint": "cb7c0d88e58533123d9622315464e82be4a6de636264ba17c0efa4e73c31cc5f",
+  "strategy_id": "fundamental_g2g3_top5_reb60_score_weighted_v1"
+}

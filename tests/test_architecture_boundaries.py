@@ -32,7 +32,7 @@ INVENTORY = ROOT / "docs" / "architecture" / "runner_inventory.json"
 
 def test_runner_inventory_covers_every_root_runner_and_job():
     records = validate_runner_inventory(ROOT, INVENTORY)
-    assert len(records) == 34
+    assert len(records) == 35
     assert {record.lifecycle for record in records} >= {
         "supported",
         "compatibility",

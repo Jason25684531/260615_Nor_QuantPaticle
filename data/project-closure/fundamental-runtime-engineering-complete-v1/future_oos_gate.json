@@ -1,0 +1,16 @@
+{
+  "acceptance_gates": [
+    "untouched_data_only",
+    "frozen_strategy_identity",
+    "required_sessions_months_rebalances",
+    "Fresh OOS PASS",
+    "explicit_human_approval_before_enablement"
+  ],
+  "earliest_eligible_date": "2026-09-01",
+  "last_contaminated_date": "2026-08-31",
+  "minimum_months": 9,
+  "minimum_rebalances": 3,
+  "minimum_sessions": 180,
+  "strategy_freeze_date": "2026-07-28",
+  "validation_command": "python run_fresh_oos_validation_v1.py --download"
+}

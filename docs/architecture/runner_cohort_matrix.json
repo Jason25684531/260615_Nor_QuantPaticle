@@ -35,6 +35,7 @@
     {"path": "run_research_cycle_v3.py", "cohort": "supported-pending", "blockers": ["v3 evidence contract", "direct runner implementation"]},
     {"path": "run_research_report.py", "cohort": "pilot", "blockers": ["adapter contract retained until caller migration"]},
     {"path": "run_robustness.py", "cohort": "supported-pending", "blockers": ["D4 frozen baseline", "canonical diagnostic boundary"]},
-    {"path": "jobs/run_fundamental_pit_expansion.py", "cohort": "operational-pending", "blockers": ["one-off job retention", "direct job invocation"]}
+    {"path": "jobs/run_fundamental_pit_expansion.py", "cohort": "operational-pending", "blockers": ["one-off job retention", "direct job invocation"]},
+    {"path": "jobs/backfill_operating_income_pit.py", "cohort": "operational-pending", "blockers": ["canonical PIT data write", "cached official MOPS source retention"]}
   ]
 }

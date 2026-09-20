@@ -1,0 +1,11 @@
+{
+  "atomic_write": "PASS",
+  "blocked_write_guard": "PASS",
+  "content_stable": true,
+  "current_recommendations_written": 5,
+  "duplicate": 0,
+  "idempotent": "PASS",
+  "ids_stable": true,
+  "status": "PASS",
+  "unique_key": "as_of_date+strategy_id+strategy_fingerprint+input_sha+ticker"
+}

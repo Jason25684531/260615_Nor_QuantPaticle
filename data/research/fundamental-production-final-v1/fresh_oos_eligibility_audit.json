@@ -1,0 +1,25 @@
+{
+  "contaminated_periods": [
+    "2018-01-01/2026-07-28",
+    "2026-01-02/2026-08-31"
+  ],
+  "freeze_date": "2026-07-28",
+  "fresh_oos_available": false,
+  "fresh_oos_status": "INSUFFICIENT_DATA",
+  "legal_untouched_window": null,
+  "observed": {
+    "months": 3,
+    "rebalances": 1,
+    "trading_days": 37
+  },
+  "performance_observed_for_selection": true,
+  "raw_data_existed": true,
+  "reason": "NO_LEGAL_UNTOUCHED_WINDOW_WITH_REQUIRED_HISTORY",
+  "required": {
+    "months": 9,
+    "rebalances": 3,
+    "trading_days": 180
+  },
+  "strategy_fingerprint": "cb7c0d88e58533123d9622315464e82be4a6de636264ba17c0efa4e73c31cc5f",
+  "strategy_id": "fundamental_g2g3_top5_reb60_score_weighted_v1"
+}

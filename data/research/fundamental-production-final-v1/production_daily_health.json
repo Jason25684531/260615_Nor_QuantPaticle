@@ -1,0 +1,15 @@
+{
+  "PIT_status": "PASS",
+  "REB60_status": "PASS",
+  "as_of_date": "2026-09-18",
+  "block_reason": "INSUFFICIENT_OOS",
+  "broker_submission_status": "DISABLED",
+  "data_freshness": "PASS",
+  "factor_health": "PASS",
+  "overall_status": "BLOCKED",
+  "parity_status": "PASS",
+  "promotion_status": "SHADOW_APPROVED",
+  "provider_status": "PASS",
+  "recommendations_written": 0,
+  "strategy_status": "REGISTERED"
+}

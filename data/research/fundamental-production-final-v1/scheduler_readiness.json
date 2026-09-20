@@ -1,0 +1,11 @@
+{
+  "command": "python run_daily_fundamental_production.py",
+  "modes": [
+    "--dry-run",
+    "--validate-only",
+    "--write-recommendations"
+  ],
+  "safe_default": true,
+  "second_scheduler": false,
+  "status": "PASS"
+}

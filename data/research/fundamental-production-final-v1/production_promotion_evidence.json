@@ -1,0 +1,27 @@
+{
+  "artifact_sha256": "4b8d07a814a97be2dd1659ba9ef674875eba6a39111b66ece2423b6fc3b5f369",
+  "artifact_version": "fundamental-promotion-evidence-v1",
+  "fresh_oos_status": "INSUFFICIENT_DATA",
+  "gates": {
+    "DATA_FRESHNESS_GATE": "PASS",
+    "FACTOR_HEALTH_GATE": "PASS",
+    "HISTORICAL_SELECTION_DRIFT": 0,
+    "PIT_INTEGRITY": "PASS",
+    "RESEARCH_RUNTIME_PARITY": "PASS"
+  },
+  "observed_fresh_oos": {
+    "months": 3,
+    "rebalances": 1,
+    "trading_days": 37
+  },
+  "production_promotion_status": "SHADOW_APPROVED",
+  "production_ready": false,
+  "required_fresh_oos": {
+    "months": 9,
+    "rebalances": 3,
+    "trading_days": 180
+  },
+  "source": "authoritative-fundamental-governance-input",
+  "strategy_fingerprint": "cb7c0d88e58533123d9622315464e82be4a6de636264ba17c0efa4e73c31cc5f",
+  "strategy_id": "fundamental_g2g3_top5_reb60_score_weighted_v1"
+}

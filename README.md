@@ -1,5 +1,16 @@
 # TWSE Factor Lab
 
+## Fundamental runtime status
+
+- Research: COMPLETE
+- Strategy: FROZEN (`fundamental_g2g3_top5_reb60_score_weighted_v1`)
+- Canonical Runtime Provider: PASS
+- Real Three-Way Parity: PASS
+- Production Engineering: COMPLETE
+- Fresh OOS: PENDING FUTURE DATA
+- Production Ready: NO; Production Enable: FALSE; Broker: DISABLED
+- Final Status: ENGINEERING_COMPLETE_OOS_PENDING
+
 ## Project Overview
 
 An offline-first Taiwan equity factor research platform. It produces reproducible
@@ -71,7 +82,7 @@ do not infer support from a filename alone.
 | Supported | `run_data_pipeline.py`, `run_fundamental_pipeline.py`, `run_factor_pipeline.py`, `run_factor_analysis.py`, `run_factor_tearsheet.py`, `run_composite_strategy.py`, `run_final_acceptance.py`, `run_performance_report.py`, `run_historical_research_cycle.py`, `run_research_cycle_v3.py`, `run_robustness.py` | Existing legacy-canonical paths remain until a cohort migration proves equivalent package output. |
 | Compatibility | `run_research_report.py`, `run_backtest.py`, `run_research_cycle_v2.py`, `run_rc1_offline_e2e.py` | Preserve documented arguments and callers; RC1 replay is read-only. `run_research_report.py` delegates to `twse_factor_lab.application.commands.research_report`. |
 | Diagnostic | `run_backtest_diagnostics.py`, `run_engine_parity_audit_v1.py`, `run_composite_factor_admission_v1.py`, `run_composite_strategy_lab_and_pyfolio_v1.py`, `run_controlled_factor_discovery_v4.py`, `run_final_strategy_validation_v1.py`, `run_final_strategy_validation_v2.py`, `run_final_strategy_validation_v3.py`, `run_fresh_oos_validation_v1.py`, `run_fundamental_pit_coverage.py` | Non-canonical evidence only; diagnostic results never promote a strategy automatically. |
-| Operational | `run_update_market_data.py`, `run_shadow_daily.py`, `run_shadow_runtime_s3.py`, `run_official_migration.py`, `run_project_closure.py`, `jobs/run_fundamental_pit_expansion.py` | Runtime/operation writes are gated and fail closed. |
+| Operational | `run_update_market_data.py`, `run_shadow_daily.py`, `run_shadow_runtime_s3.py`, `run_official_migration.py`, `run_project_closure.py`, `run_daily_fundamental_production.py`, `jobs/run_fundamental_pit_expansion.py`, `jobs/backfill_operating_income_pit.py` | Runtime/operation writes are gated and fail closed. |
 
 ## Artifact ownership
 

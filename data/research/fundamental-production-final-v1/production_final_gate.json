@@ -1,0 +1,21 @@
+{
+  "DATA_FRESHNESS_GATE": "PASS",
+  "FACTOR_HEALTH_GATE": "PASS",
+  "HISTORICAL_SELECTION_DRIFT": 0,
+  "PIT_INTEGRITY": "PASS",
+  "REB60": "PASS",
+  "broker_disabled": "PASS",
+  "broker_order_submission": "DISABLED",
+  "canonical_runtime_provider": "PASS",
+  "final_verdict": "ENGINEERING_COMPLETE_OOS_PENDING",
+  "fresh_oos_status": "INSUFFICIENT_DATA",
+  "integration": "PASS",
+  "persistence": "PASS",
+  "production_block_reason": "INSUFFICIENT_OOS",
+  "production_eligibility": "BLOCKED",
+  "production_enable_flag": false,
+  "production_ready": false,
+  "project_closed": true,
+  "real_snapshot_parity": "PASS",
+  "scheduler_ready": "PASS"
+}

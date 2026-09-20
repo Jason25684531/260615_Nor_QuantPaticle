@@ -35,6 +35,7 @@ FACTOR_OUTPUT_COLUMNS = (
     "ticker",
     "as_of_date",
     "universe_eligible",
+    "eligible",
     "g2_raw",
     "g3_raw",
     "normalized_g2",
@@ -46,6 +47,7 @@ FACTOR_OUTPUT_COLUMNS = (
     "fundamental_period_end",
     "fundamental_available_date",
     "publication_date",
+    "source",
     "data_source",
     "input_sha",
     "provider_sha",
@@ -114,6 +116,111 @@ def _source_sha(rows: Sequence[Mapping[str, Any]]) -> str:
     )
 
 
+def _yoy_rows(records: pd.DataFrame, metric: str, as_of: pd.Timestamp) -> pd.DataFrame:
+    frame = records.loc[records["metric"].eq(metric)].copy()
+    frame["available_date"] = pd.to_datetime(frame["available_date"])
+    frame["period_end"] = pd.to_datetime(frame["period_end"])
+    frame = frame.loc[frame["available_date"].le(as_of)]
+    current = (
+        frame.sort_values(["ticker", "period_end", "available_date"])
+        .groupby("ticker", as_index=False)
+        .tail(1)
+    )
+    current["prior_period_end"] = current["period_end"] - pd.DateOffset(years=1)
+    prior = (
+        frame.sort_values(["ticker", "period_end", "available_date"])
+        .groupby(["ticker", "period_end"], as_index=False)
+        .tail(1)
+    )
+    prior = prior[["ticker", "period_end", "value"]].rename(
+        columns={"period_end": "prior_period_end", "value": "prior_value"}
+    )
+    result = current.merge(prior, on=["ticker", "prior_period_end"], how="inner")
+    result["value"] = pd.to_numeric(result["value"], errors="coerce")
+    result["prior_value"] = pd.to_numeric(result["prior_value"], errors="coerce")
+    result = result.loc[result["prior_value"].ne(0)].copy()
+    result["yoy"] = result["value"].div(result["prior_value"]).sub(1)
+    return result.dropna(subset=["yoy"])
+
+
+def canonical_factor_rows(
+    records: pd.DataFrame,
+    universe: pd.DataFrame,
+    as_of_date: str,
+    *,
+    rebalance_flag: bool = False,
+    data_source: str = "canonical_fundamental_pit",
+) -> list[dict[str, Any]]:
+    """Compute frozen G2/G3 targets from canonical PIT records only."""
+
+    as_of = _date(as_of_date)
+    eligible = universe.copy()
+    eligible["date"] = pd.to_datetime(eligible["date"])
+    eligible = eligible.loc[
+        eligible["date"].eq(as_of) & eligible["is_eligible"].astype(bool), "ticker"
+    ].astype(str)
+    g2 = _yoy_rows(records, "operating_income", as_of).rename(
+        columns={
+            "yoy": "g2_raw",
+            "period_end": "g2_period_end",
+            "available_date": "g2_available_date",
+            "publication_date": "g2_publication_date",
+        }
+    )
+    g3 = _yoy_rows(records, "eps", as_of).rename(
+        columns={
+            "yoy": "g3_raw",
+            "period_end": "g3_period_end",
+            "available_date": "g3_available_date",
+            "publication_date": "g3_publication_date",
+        }
+    )
+    frame = g2.merge(
+        g3[
+            [
+                "ticker",
+                "g3_raw",
+                "g3_period_end",
+                "g3_available_date",
+                "g3_publication_date",
+            ]
+        ],
+        on="ticker",
+        how="inner",
+    )
+    frame = frame.loc[frame["ticker"].astype(str).isin(set(eligible))].copy()
+    if frame.empty:
+        raise FinalRuntimeError("CANONICAL_FACTOR_SNAPSHOT_EMPTY")
+    frame["normalized_g2"] = frame["g2_raw"].rank(method="average", pct=True)
+    frame["normalized_g3"] = frame["g3_raw"].rank(method="average", pct=True)
+    frame["composite_score"] = (frame["normalized_g2"] + frame["normalized_g3"]) / 2
+    frame = frame.sort_values(["composite_score", "ticker"], ascending=[False, True])
+    frame["rank"] = range(1, len(frame) + 1)
+    frame["selected"] = frame["rank"].le(5)
+    selected_score = frame.loc[frame["selected"], "composite_score"].sum()
+    frame["target_weight"] = 0.0
+    frame.loc[frame["selected"], "target_weight"] = (
+        frame.loc[frame["selected"], "composite_score"] / selected_score
+    )
+    frame["as_of_date"] = as_of.strftime("%Y-%m-%d")
+    frame["universe_eligible"] = True
+    frame["eligible"] = True
+    frame["fundamental_period_end"] = frame[["g2_period_end", "g3_period_end"]].max(
+        axis=1
+    )
+    frame["fundamental_available_date"] = frame[
+        ["g2_available_date", "g3_available_date"]
+    ].max(axis=1)
+    frame["publication_date"] = frame[
+        ["g2_publication_date", "g3_publication_date"]
+    ].max(axis=1)
+    frame["source"] = data_source
+    frame["data_source"] = data_source
+    frame["rebalance_flag"] = bool(rebalance_flag)
+    frame["reason"] = "CANONICAL_G2_G3_SCORE_WEIGHTED"
+    return frame.to_dict("records")
+
+
 class CanonicalFundamentalRuntimeProvider:
     """Expose already-calculated canonical PIT-safe Fundamental rows.
 
@@ -140,9 +247,8 @@ class CanonicalFundamentalRuntimeProvider:
 
     @classmethod
     def from_repository(cls, root: str | Path) -> CanonicalFundamentalRuntimeProvider:
-        path = (
-            Path(root) / "data/processed/fundamental_pit_v2/fundamental_records.parquet"
-        )
+        root = Path(root)
+        path = root / "data/processed/fundamental_pit_v2/fundamental_records.parquet"
         if not path.exists():
             raise FinalRuntimeError("CANONICAL_PIT_DATASET_MISSING")
         frame = pd.read_parquet(path)
@@ -153,7 +259,21 @@ class CanonicalFundamentalRuntimeProvider:
             raise FinalRuntimeError(
                 "CANONICAL_G2_G3_INPUT_UNAVAILABLE:" + ",".join(missing)
             )
-        return cls(frame, data_source=str(path))
+        universe = pd.read_parquet(root / "data/processed/research_universe.parquet")
+        calendar = pd.read_parquet(
+            root / "data/processed/ohlcv.parquet", columns=["date"]
+        )
+        sessions = sorted(
+            pd.to_datetime(calendar["date"]).dt.strftime("%Y-%m-%d").unique()
+        )
+        return cls(
+            factor_runtime=lambda as_of: canonical_factor_rows(
+                frame, universe, as_of, data_source=str(path)
+            ),
+            data_source=str(path),
+            market_sessions=sessions,
+            security_master=universe["ticker"].astype(str).unique(),
+        )
 
     def _raw_rows(self, as_of_date: str) -> list[Mapping[str, Any]]:
         if self._factor_runtime is not None:
@@ -169,6 +289,7 @@ class CanonicalFundamentalRuntimeProvider:
             "input_sha",
             "provider_sha",
             "data_source",
+            "source",
         }
         if not required.issubset(frame.columns):
             if "metric" in frame.columns:
@@ -192,6 +313,8 @@ class CanonicalFundamentalRuntimeProvider:
         if not rows:
             raise FinalRuntimeError("CANONICAL_FACTOR_SNAPSHOT_EMPTY")
         frame = pd.DataFrame(rows).copy()
+        if rebalance_flag is not None:
+            frame["rebalance_flag"] = bool(rebalance_flag)
         frame["as_of_date"] = frame["as_of_date"].map(_date)
         as_of = _date(as_of_date)
         if self._market_sessions and as_of not in self._market_sessions:
@@ -222,7 +345,7 @@ class CanonicalFundamentalRuntimeProvider:
             if column not in frame:
                 if column in {"input_sha", "provider_sha"}:
                     continue
-                if column == "data_source":
+                if column in {"source", "data_source"}:
                     frame[column] = self.data_source
                 elif column == "rebalance_flag":
                     frame[column] = (
@@ -558,7 +681,13 @@ def build_daily_recommendations(
 class AtomicRecommendationStore:
     """Parquet store with replacement writes and duplicate-key protection."""
 
-    key_columns = ("as_of_date", "strategy_id", "strategy_fingerprint", "ticker")
+    key_columns = (
+        "as_of_date",
+        "strategy_id",
+        "strategy_fingerprint",
+        "input_sha",
+        "ticker",
+    )
 
     def __init__(self, root: str | Path) -> None:
         self.root = Path(root)
@@ -622,8 +751,10 @@ def web_serialize(
             {
                 "ticker": row.ticker,
                 "score": row.score,
+                "rank": row.rank,
                 "target_weight": row.target_weight,
                 "action": row.action,
+                "rebalance_due": row.rebalance_due,
             }
             for row in recommendations
             if row.selected
@@ -639,11 +770,14 @@ def line_format(
     if not recommendations:
         return f"{STRATEGY_ID} | {data_status} | NO_ACTIVE_RECOMMENDATIONS"
     top = ", ".join(
-        f"{row.ticker}:{row.target_weight:.6f}"
+        f"{row.ticker}:score={row.score:.6f}:weight={row.target_weight:.6f}"
         for row in recommendations
         if row.selected
     )
-    return f"{recommendations[0].as_of_date} | {STRATEGY_ID} | {data_status} | {top}"
+    return (
+        f"{recommendations[0].as_of_date} | {STRATEGY_ID} | {data_status} | "
+        f"rebalance={recommendations[0].rebalance_due} | {top}"
+    )
 
 
 def run_daily_fundamental(

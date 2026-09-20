@@ -64,7 +64,7 @@ def build_ticker_mapping_report(
 def normalize_fundamental_records(
     pit: pd.DataFrame,
     *,
-    metrics: tuple[str, ...] = ("eps", "net_income", "equity"),
+    metrics: tuple[str, ...] = ("eps", "operating_income", "net_income", "equity"),
 ) -> pd.DataFrame:
     """Create deterministic financial records and derived ROE lineage."""
 

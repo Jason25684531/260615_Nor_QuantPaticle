@@ -1,0 +1,15 @@
+{
+  "broker_order_submission": "DISABLED",
+  "factor_weighting": "EQUAL",
+  "factors": [
+    "G2_OPERATING_INCOME_YOY",
+    "G3_EPS_YOY"
+  ],
+  "portfolio_weighting": "SCORE_WEIGHTED",
+  "production_enable_flag": false,
+  "rebalance": "60D",
+  "research_knowledge_cutoff": "2026-07-28",
+  "strategy_fingerprint": "cb7c0d88e58533123d9622315464e82be4a6de636264ba17c0efa4e73c31cc5f",
+  "strategy_id": "fundamental_g2g3_top5_reb60_score_weighted_v1",
+  "top_n": 5
+}

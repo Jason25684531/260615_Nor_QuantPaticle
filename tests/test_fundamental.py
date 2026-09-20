@@ -118,13 +118,14 @@ def test_valuation_parser_handles_off_market_and_fixture_json():
 
 def test_html_fixture_parsers_extract_common_fields():
     statement = parse_mops_statement(
-        "<table><tr><th>ticker</th><th>revenue</th><th>net income</th>"
-        "<th>eps</th><th>equity</th></tr><tr><td>2330</td><td>100</td>"
-        "<td>10</td><td>1.2</td><td>200</td></tr></table>",
+        "<table><tr><th>ticker</th><th>revenue</th><th>operating income</th>"
+        "<th>net income</th><th>eps</th><th>equity</th></tr><tr><td>2330</td>"
+        "<td>100</td><td>20</td><td>10</td><td>1.2</td><td>200</td></tr></table>",
         year=112,
         season=1,
     )
     assert statement.query("metric == 'eps'").iloc[0]["value"] == 1.2
+    assert statement.query("metric == 'operating_income'").iloc[0]["value"] == 20
     revenue = parse_monthly_revenue(
         "<table><tr><th>ticker</th><th>revenue</th><th>prior revenue</th></tr>"
         "<tr><td>2330</td><td>100</td><td>90</td></tr></table>",

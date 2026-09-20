@@ -1,0 +1,64 @@
+{
+  "as_of_date": "2025-06-30",
+  "data_status": "PASS",
+  "generated_at": "2025-06-30T00:00:00+00:00",
+  "health": {
+    "as_of_date": "2025-06-30",
+    "broker_submission": "DISABLED",
+    "data_freshness": "PASS",
+    "eligibility_reason": "ELIGIBLE",
+    "eligibility_status": "PASS",
+    "factor_health": "PASS",
+    "overall_status": "PASS",
+    "parity_status": "PASS",
+    "pit_status": "PASS",
+    "promotion_status": "PRODUCTION_APPROVED",
+    "provider_status": "PASS",
+    "rebalance_status": "PASS",
+    "recommendations_written": 5,
+    "strategy_status": "REGISTERED"
+  },
+  "strategy_id": "fundamental_g2g3_top5_reb60_score_weighted_v1",
+  "top5": [
+    {
+      "action": "ENTER",
+      "rank": 1,
+      "rebalance_due": true,
+      "score": 1.0,
+      "target_weight": 0.2119205298013245,
+      "ticker": "6768"
+    },
+    {
+      "action": "ENTER",
+      "rank": 2,
+      "rebalance_due": true,
+      "score": 0.9583333333333334,
+      "target_weight": 0.20309050772626933,
+      "ticker": "3617"
+    },
+    {
+      "action": "ENTER",
+      "rank": 3,
+      "rebalance_due": true,
+      "score": 0.9479166666666666,
+      "target_weight": 0.20088300220750552,
+      "ticker": "1419"
+    },
+    {
+      "action": "ENTER",
+      "rank": 4,
+      "rebalance_due": true,
+      "score": 0.9166666666666667,
+      "target_weight": 0.19426048565121415,
+      "ticker": "2208"
+    },
+    {
+      "action": "ENTER",
+      "rank": 5,
+      "rebalance_due": true,
+      "score": 0.8958333333333333,
+      "target_weight": 0.18984547461368653,
+      "ticker": "2421"
+    }
+  ]
+}
