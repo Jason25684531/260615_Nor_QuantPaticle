@@ -24,7 +24,7 @@
     {"path": "run_official_migration.py", "cohort": "operational-pending", "blockers": ["reconciliation gate", "canonical data migration"]},
     {"path": "run_canonical_hybrid_revalidation_v1.py", "cohort": "diagnostic-pending", "blockers": ["single-experiment verdict", "hybrid data reconciliation"]},
     {"path": "run_s3_hybrid_revalidation_v1.py", "cohort": "diagnostic-pending", "blockers": ["historical Hybrid coverage", "frozen S3 validity verdict"]},
-    {"path": "run_daily_fundamental_production.py", "cohort": "operational-pending", "blockers": ["canonical G2/G3 PIT inputs", "Fresh OOS promotion evidence", "explicit production enablement"]},
+    {"path": "run_daily_fundamental_production.py", "cohort": "pilot", "blockers": ["root compatibility contract retained until scheduler callers migrate"]},
     {"path": "run_project_closure.py", "cohort": "operational-pending", "blockers": ["closure evidence", "verification subprocess contract"]},
     {"path": "run_fundamental_pipeline.py", "cohort": "supported-pending", "blockers": ["PIT source contract", "canonical output contract"]},
     {"path": "run_fundamental_pit_coverage.py", "cohort": "diagnostic-pending", "blockers": ["coverage evidence", "direct runner implementation"]},

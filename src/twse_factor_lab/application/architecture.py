@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import json
+import subprocess
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -58,6 +59,7 @@ RETAINED_EVIDENCE = frozenset(
         "trade_excursions.parquet",
     }
 )
+MATERIAL_IGNORED_PREFIXES = (".tokensave/", "data/", "reports/")
 
 
 class ArchitectureValidationError(ValueError):
@@ -396,6 +398,20 @@ def validate_cleanup_ledger(path: str | Path) -> None:
                 raise ArchitectureValidationError(
                     f"migrate candidate lacks relocation evidence: {candidate}"
                 )
+        assessment = raw.get("cleanup_assessment")
+        if assessment is not None:
+            required = {
+                "size_bytes",
+                "references_searched",
+                "active_workflow",
+                "retention_result",
+                "disposition",
+                "rollback",
+            }
+            if not isinstance(assessment, dict) or not required <= assessment.keys():
+                raise ArchitectureValidationError(
+                    f"cleanup assessment lacks evidence: {candidate}"
+                )
         seen.add(candidate)
 
 
@@ -407,6 +423,9 @@ def run_architecture_checks(root: str | Path) -> None:
     validate_cleanup_ledger(root / "docs" / "architecture" / "cleanup_ledger.json")
     validate_artifact_inventory(
         root / "docs" / "architecture" / "artifact_inventory.json"
+    )
+    validate_tracked_ignored_artifacts(
+        root, root / "docs" / "architecture" / "artifact_inventory.json"
     )
     validate_dependency_direction(root)
 
@@ -454,6 +473,50 @@ def validate_artifact_inventory(path: str | Path) -> None:
         seen.add(path_value)
 
 
+def tracked_ignored_material_paths(root: str | Path) -> tuple[str, ...]:
+    """Return tracked ignored data, reports, and local tool metadata paths."""
+
+    root = Path(root)
+    completed = subprocess.run(
+        ["git", "-C", str(root), "ls-files", "-ci", "--exclude-standard"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode:
+        raise ArchitectureValidationError(
+            f"cannot list tracked ignored paths: {completed.stderr.strip()}"
+        )
+    return tuple(
+        path
+        for path in completed.stdout.splitlines()
+        if path.startswith(MATERIAL_IGNORED_PREFIXES)
+    )
+
+
+def validate_tracked_ignored_artifacts(
+    root: str | Path, inventory_path: str | Path
+) -> None:
+    """Require material tracked-ignored files to be covered by a namespace."""
+
+    payload = _json(Path(inventory_path))
+    namespaces = payload.get("namespaces", []) if isinstance(payload, dict) else []
+    declared = [
+        str(entry.get("path", "")).replace("\\", "/").rstrip("/")
+        for entry in namespaces
+        if isinstance(entry, dict)
+    ]
+    missing = [
+        path
+        for path in tracked_ignored_material_paths(root)
+        if not any(path == item or path.startswith(f"{item}/") for item in declared)
+    ]
+    if missing:
+        raise ArchitectureValidationError(
+            f"unclassified tracked ignored artifacts: {sorted(missing)}"
+        )
+
+
 __all__ = [
     "ArchitectureValidationError",
     "CLEANUP_STATUSES",
@@ -464,7 +527,9 @@ __all__ = [
     "tracked_runner_paths",
     "validate_cleanup_ledger",
     "validate_artifact_inventory",
+    "validate_tracked_ignored_artifacts",
     "validate_dependency_direction",
     "validate_frozen_write_policy",
     "validate_runner_inventory",
+    "tracked_ignored_material_paths",
 ]

@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+import twse_factor_lab.application.architecture as architecture
+from run_daily_fundamental_production import main as daily_compatibility_main
 from run_research_report import main as compatibility_main
 from twse_factor_lab.application.architecture import (
     ArchitectureValidationError,
@@ -15,6 +17,10 @@ from twse_factor_lab.application.architecture import (
     validate_dependency_direction,
     validate_frozen_write_policy,
     validate_runner_inventory,
+    validate_tracked_ignored_artifacts,
+)
+from twse_factor_lab.application.commands.fundamental_final import (
+    main as daily_application_main,
 )
 from twse_factor_lab.application.commands.research_report import (
     main as application_main,
@@ -61,6 +67,15 @@ def test_application_command_is_single_owner_for_research_report():
     )
 
 
+def test_daily_fundamental_adapter_has_a_single_owner():
+    assert daily_compatibility_main is daily_application_main
+    assert any(
+        record.path == "run_daily_fundamental_production.py"
+        and record.compatibility_status == "adapter"
+        for record in load_runner_inventory(INVENTORY)
+    )
+
+
 def test_existing_source_obeys_dependency_direction():
     validate_dependency_direction(ROOT)
 
@@ -103,6 +118,16 @@ def test_retained_evidence_cannot_be_marked_for_deletion(tmp_path):
 
 def test_full_architecture_checks_pass():
     run_architecture_checks(ROOT)
+
+
+def test_tracked_ignored_material_requires_inventory_coverage(monkeypatch):
+    monkeypatch.setattr(
+        architecture,
+        "tracked_ignored_material_paths",
+        lambda _: ("data/unclassified/output.json",),
+    )
+    with pytest.raises(ArchitectureValidationError, match="unclassified tracked"):
+        validate_tracked_ignored_artifacts(ROOT, INVENTORY)
 
 
 def test_application_support_preserves_config_path_contract(tmp_path):

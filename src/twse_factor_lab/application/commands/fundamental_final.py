@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import shutil
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
+from twse_factor_lab.application.support import repository_root
 from twse_factor_lab.production.final_runtime import (
     BROKER_ORDER_SUBMISSION,
     FINAL_NAMESPACE,
@@ -297,6 +300,57 @@ def _write_project_closure(
     (closure / "final_project_closure_report.md").write_text(report, encoding="utf-8")
     for name in ("web_output_fixture.json", "line_output_fixture.txt"):
         shutil.copyfile(output / name, closure / name)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--as-of-date")
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--validate-only", action="store_true")
+    parser.add_argument("--write-recommendations", action="store_true")
+    parser.add_argument("--root", type=Path, default=None)
+    args = parser.parse_args(argv)
+    root = repository_root(args.root)
+    if not args.as_of_date:
+        print(json.dumps(run_final_validation(root), sort_keys=True, default=str))
+        return 0
+    try:
+        provider = CanonicalFundamentalRuntimeProvider.from_repository(root)
+    except Exception as exc:
+        print(
+            json.dumps(
+                {
+                    "status": "BLOCKED",
+                    "reason": str(exc),
+                    "broker_order_submission": "DISABLED",
+                }
+            )
+        )
+        return 2
+    import pandas as pd
+
+    calendar_path = root / "data/processed/ohlcv.parquet"
+    sessions = (
+        sorted(
+            pd.to_datetime(pd.read_parquet(calendar_path, columns=["date"])["date"])
+            .dt.strftime("%Y-%m-%d")
+            .unique()
+            .tolist()
+        )
+        if calendar_path.exists()
+        else []
+    )
+    result = run_daily_fundamental(
+        provider=provider,
+        as_of_date=args.as_of_date,
+        sessions=sessions,
+        evidence=build_current_promotion_evidence(),
+        write_recommendations=args.write_recommendations
+        and not (args.dry_run or args.validate_only),
+        store=AtomicRecommendationStore(root / "data/production/recommendations"),
+    )
+    print(json.dumps(result, sort_keys=True, default=str))
+    return 0 if result["status"] in {"PASS", "BLOCKED"} else 1
 
 
 def run_final_validation(root: str | Path) -> dict[str, Any]:
@@ -612,4 +666,4 @@ def run_final_validation(root: str | Path) -> dict[str, Any]:
     }
 
 
-__all__ = ["run_final_validation"]
+__all__ = ["main", "run_final_validation"]

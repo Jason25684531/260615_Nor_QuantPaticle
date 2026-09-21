@@ -23,7 +23,8 @@ implementations; otherwise a function or value object is preferred.
 
 The migration is incremental. `research_report` is the current application
 command pilot and `run_research_report.py` is its tested compatibility
-adapter. The remaining root runners are not assumed to have package owners
+adapter. `run_daily_fundamental_production.py` is the operational pilot and
+delegates to `application.commands.fundamental_final`. The remaining root runners are not assumed to have package owners
 merely because an inventory migration target was once planned: their actual
 cohort, blockers, and frozen/hash-bound exclusions are recorded in
 `runner_cohort_matrix.json`. Empty command modules are not created to make the
@@ -43,6 +44,10 @@ content remains in place when it is canonical or frozen. New active output is
 classified before it is routed to research, diagnostics, runtime, or transient
 namespaces. `cleanup_ledger.json` records evidence, rollback, and verification
 for every move/delete candidate; unknown candidates are left untouched.
+Tracked ignored material under `data/` and `reports/` is covered by the same
+artifact inventory rather than treated as disposable. `.tokensave/` is local,
+ignored tool state and is intentionally not versioned. `outputs/` is transient,
+but `outputs/fundamental_data/` is retained while current PIT workflows name it.
 
 For atomic material writes, reuse `data.parquet_store.ParquetStore.save` for
 Parquet frames and the existing runtime/governance atomic JSON helpers where

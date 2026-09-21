@@ -59,8 +59,9 @@ as supported, compatibility, diagnostic, operational-job, or retired. The
 current supported research-cycle default is v3. The inventory and cleanup
 ledger are validated by `tests/test_architecture_boundaries.py`.
 
-The root `run_research_report.py` is now a compatibility adapter to the
-application command. Other root runners remain intentionally classified until
+The root `run_research_report.py` and
+`run_daily_fundamental_production.py` are compatibility adapters to their
+application commands. Other root runners remain intentionally classified until
 their callers and retention obligations are migrated. In particular,
 `run_backtest.py` is retained because tests import it and it can overwrite
 canonical composite artifacts; use the canonical composite runner for the
@@ -92,6 +93,7 @@ data/processed/              legacy RC1 canonical artifacts; no new active write
 data/research/<cycle>/       reproducible active research evidence
 data/diagnostics/<run>/      non-canonical diagnostic evidence
 data/runtime/<run>/          shadow and operational state
+data/project-closure/<run>/  retained engineering-closure evidence
 reports/{final,rc1}/         frozen human-readable evidence
 reports/research/<cycle>/    active research reports
 outputs/                     explicitly transient, ignored output only
@@ -104,6 +106,11 @@ place, and every relocation needs references, hash impact, rollback, and
 verification evidence. `docs/architecture/runner_cohort_matrix.json` records
 why a runner is pending migration; empty application command modules are not
 created just to satisfy a planned target.
+
+Ignored does not mean disposable: tracked `data/` and `reports/` evidence is
+classified in the artifact inventory. `outputs/` is local transient space, but
+`outputs/fundamental_data/` remains retained while active PIT workflows depend
+on its fixed path. Local `.tokensave/` state is ignored and not versioned.
 
 ## Legacy RC1 (Frozen)
 
