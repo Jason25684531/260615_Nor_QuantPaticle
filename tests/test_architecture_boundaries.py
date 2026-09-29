@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import json
 from dataclasses import replace
 from pathlib import Path
@@ -7,6 +8,7 @@ from pathlib import Path
 import pytest
 
 import twse_factor_lab.application.architecture as architecture
+import twse_factor_lab.application.commands.architecture_check as architecture_check
 from run_daily_fundamental_production import main as daily_compatibility_main
 from run_research_report import main as compatibility_main
 from twse_factor_lab.application.architecture import (
@@ -56,6 +58,7 @@ def test_runner_inventory_records_command_contract_fields():
         assert record.write_authority
         assert record.retirement_condition
         assert record.cohort
+        assert record.action in architecture.CLOSURE_ACTIONS
 
 
 def test_application_command_is_single_owner_for_research_report():
@@ -116,8 +119,61 @@ def test_retained_evidence_cannot_be_marked_for_deletion(tmp_path):
         validate_cleanup_ledger(path)
 
 
+def test_protected_cleanup_path_cannot_be_deleted(tmp_path):
+    payload = json.loads(
+        (ROOT / "docs" / "architecture" / "cleanup_ledger.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    payload["protected_paths"][0]["action"] = "delete"
+    path = tmp_path / "cleanup_ledger.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ArchitectureValidationError, match="no-move-no-delete"):
+        validate_cleanup_ledger(path)
+
+
+def test_unknown_cleanup_candidate_fails_closed(tmp_path):
+    path = tmp_path / "cleanup_ledger.json"
+    path.write_text(
+        json.dumps(
+            {
+                "protected_paths": [],
+                "candidates": [
+                    {
+                        "path": "mystery.bin",
+                        "status": "unknown",
+                        "disposition": "delete",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ArchitectureValidationError, match="fail closed"):
+        validate_cleanup_ledger(path)
+
+
 def test_full_architecture_checks_pass():
     run_architecture_checks(ROOT)
+
+
+def test_architecture_check_reports_current_repository(capsys):
+    assert architecture_check.main(ROOT) == 0
+    output = capsys.readouterr().out
+    assert "runner_total = 35" in output
+    assert "unclassified = 0" in output
+    assert "FINAL_STATUS = PASS" in output
+
+
+def test_architecture_check_returns_nonzero_on_violation(monkeypatch, capsys):
+    def fail(_: Path) -> None:
+        raise ArchitectureValidationError("induced violation")
+
+    monkeypatch.setattr(architecture_check, "run_architecture_checks", fail)
+    assert architecture_check.main(ROOT) == 1
+    output = capsys.readouterr().out
+    assert "induced violation" in output
+    assert "FINAL_STATUS = FAIL" in output
 
 
 def test_tracked_ignored_material_requires_inventory_coverage(monkeypatch):
@@ -176,4 +232,19 @@ def test_application_target_cannot_claim_frozen_namespace():
     with pytest.raises(ArchitectureValidationError, match="frozen namespace"):
         validate_frozen_write_policy(
             (replace(report, output_namespace="reports/final/"),)
+        )
+
+
+def test_application_owned_root_adapters_contain_no_implementation():
+    adapters = [
+        record
+        for record in load_runner_inventory(INVENTORY)
+        if record.compatibility_status == "adapter"
+    ]
+    assert adapters
+    for record in adapters:
+        tree = ast.parse((ROOT / record.path).read_text(encoding="utf-8"))
+        assert not any(
+            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+            for node in ast.walk(tree)
         )

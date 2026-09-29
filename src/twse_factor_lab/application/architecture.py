@@ -47,6 +47,17 @@ COHORT_STATUSES = frozenset(
         "operational-pending",
     }
 )
+CLOSURE_ACTIONS = frozenset(
+    {
+        "KEEP_FROZEN",
+        "KEEP_COMPATIBILITY",
+        "MIGRATE_TO_APPLICATION_COMMAND",
+        "KEEP_DIAGNOSTIC",
+        "KEEP_OPERATIONAL",
+        "DELETE_TRANSIENT",
+        "BLOCKED",
+    }
+)
 RETAINED_EVIDENCE = frozenset(
     {
         "d4_acceptance_handoff.json",
@@ -81,6 +92,7 @@ class RunnerRecord:
     retirement_condition: str
     cohort: str
     frozen_preservation: bool
+    action: str
 
 
 def _json(path: Path) -> Any:
@@ -187,6 +199,7 @@ def load_runner_inventory(path: str | Path) -> tuple[RunnerRecord, ...]:
                 frozen_preservation=bool(
                     raw.get("frozen_preservation", cohort == "frozen-replay")
                 ),
+                action=str(raw.get("action") or matrix_entry.get("action") or ""),
             )
         )
     return tuple(records)
@@ -247,6 +260,11 @@ def validate_runner_inventory(
                 raise ArchitectureValidationError(
                     "runner cohort entries require blockers/evidence"
                 )
+            if item.get("action") not in CLOSURE_ACTIONS:
+                raise ArchitectureValidationError(
+                    "runner cohort entry requires one closure action: "
+                    f"{item.get('path')}"
+                )
     elif root.resolve() == Path(inventory_path).resolve().parents[2]:
         raise ArchitectureValidationError(
             f"missing runner cohort matrix: {matrix_path}"
@@ -264,6 +282,10 @@ def validate_runner_inventory(
             if not record.migration_target or record.migration_target not in imports:
                 raise ArchitectureValidationError(
                     f"compatibility adapter does not delegate to target: {record.path}"
+                )
+            if _contains_definitions(root / record.path):
+                raise ArchitectureValidationError(
+                    f"compatibility adapter duplicates implementation: {record.path}"
                 )
         if record.lifecycle != "retired" and record.cohort == "unclassified":
             raise ArchitectureValidationError(f"runner lacks cohort: {record.path}")
@@ -321,6 +343,17 @@ def _iter_imports(path: Path) -> Iterable[tuple[int, str]]:
                 yield node.lineno, alias.name
         elif isinstance(node, ast.ImportFrom) and node.module:
             yield node.lineno, node.module
+
+
+def _contains_definitions(path: Path) -> bool:
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    except (OSError, SyntaxError) as exc:
+        raise ArchitectureValidationError(f"cannot parse {path}: {exc}") from exc
+    return any(
+        isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+        for node in ast.walk(tree)
+    )
 
 
 def validate_dependency_direction(root: str | Path) -> None:
@@ -390,6 +423,14 @@ def validate_cleanup_ledger(path: str | Path) -> None:
         if status == "delete" and not raw.get("evidence"):
             raise ArchitectureValidationError(
                 f"delete candidate lacks evidence: {candidate}"
+            )
+        if status == "unknown" and raw.get("disposition") not in {
+            None,
+            "retain",
+            "no-action",
+        }:
+            raise ArchitectureValidationError(
+                f"unknown cleanup candidate must fail closed: {candidate}"
             )
         if status == "migrate":
             relocation = raw.get("relocation")
@@ -520,6 +561,7 @@ def validate_tracked_ignored_artifacts(
 __all__ = [
     "ArchitectureValidationError",
     "CLEANUP_STATUSES",
+    "CLOSURE_ACTIONS",
     "LIFECYCLES",
     "RunnerRecord",
     "load_runner_inventory",
