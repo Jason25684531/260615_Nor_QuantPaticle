@@ -7,10 +7,26 @@ python run_daily_fundamental_production.py --validate-only
 python run_daily_fundamental_production.py --dry-run
 ```
 
+With no `--as-of-date`, the command uses the latest completed session present
+in canonical OHLCV data. Historical closure evidence is regenerated only by:
+
+```powershell
+python run_daily_fundamental_production.py --historical-validation
+```
+
 Inspect a historical date without a write:
 
 ```powershell
 python run_daily_fundamental_production.py --as-of-date 2025-06-30
+```
+
+Run or persist a broker-free observation while production eligibility remains
+blocked. Observation state is isolated under
+`data/observation/fundamental-recommendations/`:
+
+```powershell
+python run_daily_fundamental_production.py --observation --dry-run
+python run_daily_fundamental_production.py --observation --write-recommendations
 ```
 
 The write command is intentionally fail-closed until Fresh OOS passes and a

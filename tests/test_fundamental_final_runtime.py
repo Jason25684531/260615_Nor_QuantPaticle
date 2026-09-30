@@ -243,3 +243,71 @@ def test_daily_fail_closed_gates_and_provider_emit_no_recommendations(tmp_path) 
     )
     assert result["status"] == "BLOCKED"
     assert result["recommendations"] == []
+
+
+def test_observation_restores_reb60_state_across_restarts(tmp_path) -> None:
+    sessions = (
+        pd.date_range("2024-01-01", periods=121, freq="B").strftime("%Y-%m-%d").tolist()
+    )
+
+    class Provider:
+        def snapshot(self, as_of_date):
+            return _rows(as_of_date)
+
+    def run(index: int):
+        return run_daily_fundamental(
+            provider=Provider(),
+            as_of_date=sessions[index],
+            sessions=sessions,
+            observation=True,
+            write_recommendations=True,
+            store=AtomicRecommendationStore(tmp_path),
+        )
+
+    first = run(0)
+    before = run(59)
+    boundary_runs = [run(60) for _ in range(10)]
+    boundary = boundary_runs[0]
+    repeated = boundary_runs[-1]
+    after_restart = run(61)
+
+    assert first["status"] == "OBSERVATION"
+    assert first["health"]["broker_submission"] == "DISABLED"
+    assert before["health"]["rebalance_status"] == "NO_REBALANCE"
+    assert {row.action for row in before["recommendations"]} == {"NO_REBALANCE"}
+    assert boundary["health"]["rebalance_status"] == "PASS"
+    assert repeated["health"]["rebalance_status"] == "PASS"
+    assert after_restart["health"]["rebalance_status"] == "NO_REBALANCE"
+    saved = pd.read_parquet(AtomicRecommendationStore(tmp_path).path)
+    assert saved.duplicated(list(AtomicRecommendationStore.key_columns)).sum() == 0
+
+
+def test_unreadable_runtime_state_fails_closed(tmp_path) -> None:
+    store = AtomicRecommendationStore(tmp_path)
+    store.root.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame({"as_of_date": ["2024-01-01"]}).to_parquet(store.path, index=False)
+    result = run_daily_fundamental(
+        provider=CanonicalFundamentalRuntimeProvider(_rows()),
+        as_of_date="2024-01-02",
+        sessions=["2024-01-02"],
+        observation=True,
+        store=store,
+    )
+    assert result["status"] == "BLOCKED"
+    assert result["reason"] == "RECOMMENDATION_STATE_INVALID"
+
+
+def test_observation_does_not_bypass_runtime_safety_gates() -> None:
+    evidence = _eligible_evidence()
+    evidence.pop("artifact_sha256")
+    evidence["gates"]["DATA_FRESHNESS_GATE"] = "FAIL"
+    evidence["artifact_sha256"] = sha256_payload(evidence)
+    result = run_daily_fundamental(
+        provider=CanonicalFundamentalRuntimeProvider(_rows()),
+        as_of_date="2024-01-02",
+        sessions=["2024-01-02"],
+        evidence=evidence,
+        observation=True,
+    )
+    assert result["status"] == "BLOCKED"
+    assert result["reason"] == "DATA_FRESHNESS_GATE_FAIL"

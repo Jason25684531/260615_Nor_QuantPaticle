@@ -580,6 +580,8 @@ def trading_session_rebalance_due(
     if last_rebalance_date is None:
         return True
     last = _date(last_rebalance_date)
+    if last == current:
+        return True
     prior = [item for item in ordered if item <= last]
     if not prior:
         return True
@@ -693,6 +695,28 @@ class AtomicRecommendationStore:
         self.root = Path(root)
         self.path = self.root / "daily_recommendations.parquet"
 
+    def load_state(self) -> tuple[list[dict[str, Any]], str | None]:
+        """Restore the latest targets and persisted REB60 anchor."""
+        if not self.path.exists():
+            return [], None
+        try:
+            rows = pd.read_parquet(self.path)
+            if set(RECOMMENDATION_COLUMNS) - set(rows.columns):
+                raise FinalRuntimeError("RECOMMENDATION_STATE_INVALID")
+            rows["as_of_date"] = rows["as_of_date"].astype(str)
+            latest_date = rows["as_of_date"].max()
+            latest = rows.loc[
+                (rows["as_of_date"] == latest_date) & rows["selected"].astype(bool)
+            ]
+            rebalances = rows.loc[rows["rebalance_due"].astype(bool), "as_of_date"]
+            return latest.to_dict("records"), (
+                str(rebalances.max()) if not rebalances.empty else None
+            )
+        except FinalRuntimeError:
+            raise
+        except Exception as exc:
+            raise FinalRuntimeError("RECOMMENDATION_STATE_UNREADABLE") from exc
+
     def persist(self, recommendations: Sequence[DailyRecommendation]) -> int:
         if not recommendations:
             return 0
@@ -791,11 +815,23 @@ def run_daily_fundamental(
     write_recommendations: bool = False,
     store: AtomicRecommendationStore | None = None,
     explicit_enable: bool = False,
+    observation: bool = False,
 ) -> dict[str, Any]:
     evidence = evidence or build_current_promotion_evidence()
     spec = FundamentalStrategySpec()
     gate = ProductionEligibilityGate()
     eligibility = gate.evaluate(evidence, spec, explicit_enable=explicit_enable)
+    observation_checks = (
+        "strategy_fingerprint",
+        "PIT_INTEGRITY",
+        "DATA_FRESHNESS_GATE",
+        "FACTOR_HEALTH_GATE",
+        "RESEARCH_RUNTIME_PARITY",
+        "HISTORICAL_SELECTION_DRIFT",
+    )
+    observation_failure = next(
+        (name for name in observation_checks if not eligibility.checks.get(name)), None
+    )
     health: dict[str, Any] = {
         "as_of_date": as_of_date,
         "provider_status": "NOT_RUN",
@@ -812,16 +848,22 @@ def run_daily_fundamental(
         "broker_submission": BROKER_ORDER_SUBMISSION,
         "overall_status": "BLOCKED",
     }
-    if not eligibility.allowed:
+    if not eligibility.allowed and (not observation or observation_failure):
         health["eligibility_status"] = eligibility.status
-        health["eligibility_reason"] = eligibility.reason
+        health["eligibility_reason"] = (
+            f"{observation_failure}_FAIL"
+            if observation and observation_failure
+            else eligibility.reason
+        )
         return {
             "status": "BLOCKED",
-            "reason": eligibility.reason,
+            "reason": health["eligibility_reason"],
             "recommendations": [],
             "health": health,
         }
     try:
+        if store is not None and not prior_targets and last_rebalance_date is None:
+            prior_targets, last_rebalance_date = store.load_state()
         rows = provider.snapshot(as_of_date)
         due = trading_session_rebalance_due(sessions, as_of_date, last_rebalance_date)
         recommendations = build_daily_recommendations(
@@ -840,18 +882,21 @@ def run_daily_fundamental(
         {
             "provider_status": "PASS",
             "rebalance_status": "PASS" if due else "NO_REBALANCE",
-            "eligibility_status": "PASS",
-            "eligibility_reason": "ELIGIBLE",
+            "eligibility_status": "OBSERVATION" if observation else "PASS",
+            "eligibility_reason": "PRODUCTION_INELIGIBLE_OBSERVATION"
+            if observation
+            else "ELIGIBLE",
         }
     )
     if write_recommendations:
         if store is None:
             raise FinalRuntimeError("RECOMMENDATION_STORE_REQUIRED")
         health["recommendations_written"] = store.persist(recommendations)
-    health["overall_status"] = "PASS"
+    status = "OBSERVATION" if observation else "PASS"
+    health["overall_status"] = status
     return {
-        "status": "PASS",
-        "reason": "ELIGIBLE",
+        "status": status,
+        "reason": health["eligibility_reason"],
         "recommendations": recommendations,
         "health": health,
     }

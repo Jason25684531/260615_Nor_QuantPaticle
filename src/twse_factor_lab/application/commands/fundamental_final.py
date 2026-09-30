@@ -7,6 +7,7 @@ import hashlib
 import json
 import shutil
 from collections.abc import Sequence
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -308,10 +309,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--validate-only", action="store_true")
     parser.add_argument("--write-recommendations", action="store_true")
+    parser.add_argument("--observation", action="store_true")
+    parser.add_argument("--historical-validation", action="store_true")
     parser.add_argument("--root", type=Path, default=None)
     args = parser.parse_args(argv)
     root = repository_root(args.root)
-    if not args.as_of_date:
+    if args.historical_validation:
+        if args.as_of_date or args.observation or args.write_recommendations:
+            parser.error("--historical-validation cannot be combined with daily modes")
         print(json.dumps(run_final_validation(root), sort_keys=True, default=str))
         return 0
     try:
@@ -340,17 +345,39 @@ def main(argv: Sequence[str] | None = None) -> int:
         if calendar_path.exists()
         else []
     )
+    sessions = [session for session in sessions if session <= date.today().isoformat()]
+    as_of_date = args.as_of_date or (sessions[-1] if sessions else None)
+    if as_of_date is None:
+        print(
+            json.dumps(
+                {
+                    "status": "BLOCKED",
+                    "reason": "MARKET_CALENDAR_EMPTY",
+                    "broker_order_submission": "DISABLED",
+                }
+            )
+        )
+        return 2
+    store = AtomicRecommendationStore(
+        root
+        / (
+            "data/observation/fundamental-recommendations"
+            if args.observation
+            else "data/production/recommendations"
+        )
+    )
     result = run_daily_fundamental(
         provider=provider,
-        as_of_date=args.as_of_date,
+        as_of_date=as_of_date,
         sessions=sessions,
         evidence=build_current_promotion_evidence(),
         write_recommendations=args.write_recommendations
         and not (args.dry_run or args.validate_only),
-        store=AtomicRecommendationStore(root / "data/production/recommendations"),
+        store=store,
+        observation=args.observation,
     )
     print(json.dumps(result, sort_keys=True, default=str))
-    return 0 if result["status"] in {"PASS", "BLOCKED"} else 1
+    return 0 if result["status"] in {"PASS", "BLOCKED", "OBSERVATION"} else 1
 
 
 def run_final_validation(root: str | Path) -> dict[str, Any]:
