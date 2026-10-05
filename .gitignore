@@ -82,3 +82,5 @@ test_broker_state.json
 reports/*
 
 outputs/*
+docs/research-publication/*
+docs/handoff/*
