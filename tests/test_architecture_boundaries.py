@@ -40,7 +40,7 @@ INVENTORY = ROOT / "docs" / "architecture" / "runner_inventory.json"
 
 def test_runner_inventory_covers_every_root_runner_and_job():
     records = validate_runner_inventory(ROOT, INVENTORY)
-    assert len(records) == 35
+    assert len(records) == 38
     assert {record.lifecycle for record in records} >= {
         "supported",
         "compatibility",
@@ -160,7 +160,7 @@ def test_full_architecture_checks_pass():
 def test_architecture_check_reports_current_repository(capsys):
     assert architecture_check.main(ROOT) == 0
     output = capsys.readouterr().out
-    assert "runner_total = 35" in output
+    assert "runner_total = 38" in output
     assert "unclassified = 0" in output
     assert "FINAL_STATUS = PASS" in output
 

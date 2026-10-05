@@ -1,0 +1,31 @@
+{
+  "policy_version": "historical-evidence-v1",
+  "maximum_years": 5,
+  "minimum_sessions": 756,
+  "factor_sample_stride": 20,
+  "forward_horizons": [20, 60],
+  "primary_horizon": 60,
+  "quantiles": 5,
+  "rolling_ic_observations": 12,
+  "bootstrap": {
+    "enabled": true,
+    "block_length": 6,
+    "draws": 1000,
+    "seed": 42,
+    "minimum_observations": 12
+  },
+  "classification": {
+    "minimum_composite_ic_observations": 12,
+    "composite_ic": 0.02,
+    "ic_positive_ratio": 0.55,
+    "top_bottom_spread": 0.0,
+    "positive_ic_year_ratio": 0.6,
+    "sharpe": 0.5,
+    "max_drawdown_floor": -0.4,
+    "positive_year_ratio": 0.6,
+    "maximum_top1_contribution": 0.5,
+    "maximum_top3_contribution": 0.8,
+    "minimum_positive_sensitivity_ratio": 0.6,
+    "supportive_score_ratio": 0.7
+  }
+}

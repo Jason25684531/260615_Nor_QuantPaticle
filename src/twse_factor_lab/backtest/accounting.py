@@ -32,7 +32,11 @@ def canonical_transaction_cost(
 
 
 def canonical_position_value(quantity: float, price: float) -> np.float64:
-    return np.float64(np.float64(quantity) * np.float64(price))
+    quantity_value = np.float64(quantity)
+    price_value = np.float64(price)
+    if quantity_value == 0 and np.isnan(price_value):
+        return np.float64(0.0)
+    return np.float64(quantity_value * price_value)
 
 
 def canonical_equity(cash: float, position_values: pd.Series) -> np.float64:
@@ -70,7 +74,7 @@ def canonical_replay(
             desired = target * pre_trade_equity
             values = shares * prices
             sells = (values - desired).clip(lower=0.0).where(tradable, 0.0)
-            sell_sizes = sells / prices
+            sell_sizes = (sells / prices).where(tradable, 0.0)
             sell_cost_rate = np.float64(cost_model.sell_cost_rate)
             cash = np.float64(
                 cash + np.float64((sells * (1.0 - sell_cost_rate)).sum())

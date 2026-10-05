@@ -143,15 +143,12 @@ def _yoy_rows(records: pd.DataFrame, metric: str, as_of: pd.Timestamp) -> pd.Dat
     return result.dropna(subset=["yoy"])
 
 
-def canonical_factor_rows(
+def canonical_factor_values(
     records: pd.DataFrame,
     universe: pd.DataFrame,
     as_of_date: str,
-    *,
-    rebalance_flag: bool = False,
-    data_source: str = "canonical_fundamental_pit",
-) -> list[dict[str, Any]]:
-    """Compute frozen G2/G3 targets from canonical PIT records only."""
+) -> pd.DataFrame:
+    """Return frozen G2/G3 PIT values before composite ranking and selection."""
 
     as_of = _date(as_of_date)
     eligible = universe.copy()
@@ -175,20 +172,34 @@ def canonical_factor_rows(
             "publication_date": "g3_publication_date",
         }
     )
-    frame = g2.merge(
-        g3[
-            [
-                "ticker",
-                "g3_raw",
-                "g3_period_end",
-                "g3_available_date",
-                "g3_publication_date",
-            ]
-        ],
-        on="ticker",
-        how="inner",
-    )
+    columns = [
+        "ticker",
+        "g3_raw",
+        "g3_period_end",
+        "g3_available_date",
+        "g3_publication_date",
+    ]
+    frame = g2.merge(g3[columns], on="ticker", how="outer")
     frame = frame.loc[frame["ticker"].astype(str).isin(set(eligible))].copy()
+    frame["ticker"] = frame["ticker"].astype(str)
+    frame["used_on_trade_date"] = as_of
+    return frame.sort_values("ticker", kind="stable").reset_index(drop=True)
+
+
+def canonical_factor_rows(
+    records: pd.DataFrame,
+    universe: pd.DataFrame,
+    as_of_date: str,
+    *,
+    rebalance_flag: bool = False,
+    data_source: str = "canonical_fundamental_pit",
+) -> list[dict[str, Any]]:
+    """Compute frozen G2/G3 targets from canonical PIT records only."""
+
+    as_of = _date(as_of_date)
+    frame = canonical_factor_values(records, universe, as_of_date).dropna(
+        subset=["g2_raw", "g3_raw"]
+    )
     if frame.empty:
         raise FinalRuntimeError("CANONICAL_FACTOR_SNAPSHOT_EMPTY")
     frame["normalized_g2"] = frame["g2_raw"].rank(method="average", pct=True)
@@ -947,6 +958,8 @@ __all__ = [
     "build_daily_recommendations",
     "build_real_snapshot_parity",
     "build_three_runtime_snapshots",
+    "canonical_factor_rows",
+    "canonical_factor_values",
     "fresh_oos_audit",
     "line_format",
     "predeclared_snapshot_manifest",
